@@ -239,6 +239,15 @@ npm run type-check
 npm run build
 ```
 
+## Development SQL
+
+`sql/` 配下に、RLS適用用SQLと開発用テストデータを配置しています。
+
+- `RLS_V2_APPLY.sql`
+- `UI_TEST_DATASET_V2.sql`
+
+テストデータSQLは、実行前にプレースホルダーを自分のテスト用値へ置換して使用します。
+
 ## 今後の改善予定
 
 - 表示名を変更できる設定画面
