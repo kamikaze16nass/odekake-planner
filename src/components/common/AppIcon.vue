@@ -13,6 +13,7 @@ withDefaults(
       | 'map-pin'
       | 'clock'
       | 'check-circle'
+      | 'chart-bar'
       | 'chevron-left'
       | 'chevron-right'
       | 'x'
@@ -102,6 +103,10 @@ withDefaults(
     <template v-else-if="name === 'check-circle'">
       <circle cx="12" cy="12" r="9" />
       <path d="M8 12L11 15L16.5 9.5" />
+    </template>
+
+    <template v-else-if="name === 'chart-bar'">
+      <path d="M4 20V11 M10 20V5 M16 20V14 M3 20H21" />
     </template>
 
     <path v-else-if="name === 'chevron-left'" d="M15 18L9 12L15 6" />
