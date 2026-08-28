@@ -107,6 +107,12 @@ const router = createRouter({
           }
         }
 
+        // 名前未設定なら HomeView を表示して入力を待つ。
+        // HomeView.saveDisplayName() が名前保存後に参加処理を続行する。
+        if (!scheduleStore.hasDisplayName) {
+          return true
+        }
+
         const joined =
           await scheduleStore.joinSchedule(
             schedule.id,

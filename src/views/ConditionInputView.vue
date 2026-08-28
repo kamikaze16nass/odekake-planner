@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import BaseButton from '@/components/common/BaseButton.vue'
 import BaseChip from '@/components/common/BaseChip.vue'
-import BaseInput from '@/components/common/BaseInput.vue'
 import BackButton from '@/components/common/BackButton.vue'
+import AppIcon from '@/components/common/AppIcon.vue'
+import MapPicker from '@/components/common/MapPicker.vue'
+import { forwardGeocode, reverseGeocode } from '@/services/geoapify'
 import { useScheduleStore } from '@/stores/schedule'
 
 const route = useRoute()
@@ -13,9 +15,7 @@ const router = useRouter()
 const scheduleStore = useScheduleStore()
 
 const scheduleId = computed(() => String(route.params.id))
-
 const schedule = computed(() => scheduleStore.getScheduleById(scheduleId.value))
-
 const existingResponse = computed(() => scheduleStore.getCurrentUserResponse(scheduleId.value))
 
 const activities = [
@@ -30,9 +30,285 @@ const activities = [
 
 const selectedDates = ref<string[]>([])
 const selectedActivities = ref<string[]>([])
+
+type TransportMode = 'walking' | 'driving' | 'transit' | null
+type TravelOption = 'walking' | 'driving' | 'transit' | 'none'
+
+const travelOptions = [
+  { value: 'walking', label: '徒歩', icon: 'walking' },
+  { value: 'driving', label: '車', icon: 'car' },
+  { value: 'transit', label: '電車', icon: 'train' },
+  { value: 'none', label: '条件なし', icon: 'no-condition' },
+] as const
+
+const transportMode = ref<TransportMode>(null)
+const travelOption = ref<TravelOption | null>(null)
+const travelTime = ref<number | null>(null)
+
 const departure = ref('')
-const travelTime = ref('')
-const preferredArea = ref('')
+const departureLocation = ref<{
+  lat: number
+  lng: number
+} | null>(null)
+
+const isResolvingDeparture = ref(false)
+const isSearchingDeparture = ref(false)
+const isDepartureSearchPending = ref(false)
+const departureLocationError = ref('')
+
+let departureSearchTimer: ReturnType<typeof setTimeout> | null = null
+let forwardGeocodeController: AbortController | null = null
+let reverseGeocodeController: AbortController | null = null
+
+const preferredAreaInput = ref('')
+const preferredAreas = ref<string[]>([])
+const preferredAreaError = ref('')
+const preferredAreaLimit = 5
+
+const needsDeparture = computed(
+  () => travelOption.value === 'walking' || travelOption.value === 'driving',
+)
+
+const isMapInteractionDisabled = computed(
+  () =>
+    !needsDeparture.value ||
+    isResolvingDeparture.value ||
+    isSearchingDeparture.value ||
+    isDepartureSearchPending.value,
+)
+
+const departurePlaceholder = computed(() => {
+  if (isResolvingDeparture.value) return '地点情報を取得中...'
+  if (isSearchingDeparture.value) return '地点を検索中...'
+  return '例：東京駅'
+})
+
+const travelTimeConfig = computed(() => {
+  switch (travelOption.value) {
+    case 'walking':
+      return { min: 10, max: 60, step: 10, defaultValue: 30 }
+    case 'driving':
+      return { min: 30, max: 180, step: 30, defaultValue: 60 }
+    default:
+      return null
+  }
+})
+
+const travelTimeOptions = computed(() => {
+  const config = travelTimeConfig.value
+  if (!config) return []
+
+  const values: number[] = []
+  for (let value = config.min; value <= config.max; value += config.step) {
+    values.push(value)
+  }
+  return values
+})
+
+const travelTimeProgress = computed(() => {
+  const config = travelTimeConfig.value
+  const value = travelTime.value
+
+  if (!config || value === null || config.max === config.min) {
+    return '0%'
+  }
+
+  const progress = ((value - config.min) / (config.max - config.min)) * 100
+
+  return `${Math.min(100, Math.max(0, progress))}%`
+})
+
+const isAbortError = (error: unknown) =>
+  error instanceof DOMException && error.name === 'AbortError'
+
+const clearDepartureSearchTimer = () => {
+  if (!departureSearchTimer) return
+  clearTimeout(departureSearchTimer)
+  departureSearchTimer = null
+}
+
+const cancelForwardGeocoding = () => {
+  clearDepartureSearchTimer()
+  forwardGeocodeController?.abort()
+  forwardGeocodeController = null
+  isDepartureSearchPending.value = false
+  isSearchingDeparture.value = false
+}
+
+const cancelReverseGeocoding = () => {
+  reverseGeocodeController?.abort()
+  reverseGeocodeController = null
+  isResolvingDeparture.value = false
+}
+
+const cancelAllGeocoding = () => {
+  cancelForwardGeocoding()
+  cancelReverseGeocoding()
+}
+
+const clearDepartureState = () => {
+  cancelAllGeocoding()
+  departure.value = ''
+  departureLocation.value = null
+  departureLocationError.value = ''
+}
+
+const handleDepartureInput = (value: string) => {
+  if (!needsDeparture.value || isResolvingDeparture.value) return
+
+  cancelForwardGeocoding()
+  departureLocationError.value = ''
+  departureLocation.value = null
+
+  const query = value.trim()
+  if (!query) return
+
+  isDepartureSearchPending.value = true
+
+  departureSearchTimer = setTimeout(async () => {
+    if (!needsDeparture.value) return
+
+    departureSearchTimer = null
+    isDepartureSearchPending.value = false
+    forwardGeocodeController = new AbortController()
+    const controller = forwardGeocodeController
+
+    isSearchingDeparture.value = true
+    departureLocationError.value = ''
+
+    try {
+      const location = await forwardGeocode(query, controller.signal)
+
+      if (!needsDeparture.value || controller.signal.aborted) return
+
+      if (!location) {
+        departureLocationError.value = '地点を見つけられませんでした。入力内容を確認してください。'
+        return
+      }
+
+      departureLocation.value = {
+        lat: location.lat,
+        lng: location.lng,
+      }
+    } catch (error) {
+      if (isAbortError(error)) return
+
+      console.error('出発地点の座標を取得できませんでした。', error)
+      departureLocationError.value =
+        '地点の検索に失敗しました。時間をおいてもう一度お試しください。'
+    } finally {
+      if (forwardGeocodeController === controller) {
+        forwardGeocodeController = null
+        isSearchingDeparture.value = false
+      }
+    }
+  }, 1000)
+}
+
+const handleLocationSelected = async (location: { lat: number; lng: number }) => {
+  if (!needsDeparture.value || isMapInteractionDisabled.value) return
+
+  cancelForwardGeocoding()
+  cancelReverseGeocoding()
+
+  reverseGeocodeController = new AbortController()
+  const controller = reverseGeocodeController
+
+  isResolvingDeparture.value = true
+  departureLocationError.value = ''
+  departure.value = ''
+
+  try {
+    const placeName = await reverseGeocode(location.lat, location.lng, controller.signal)
+
+    if (!needsDeparture.value || controller.signal.aborted) return
+
+    if (!placeName) {
+      departureLocationError.value =
+        'この地点の地名を取得できませんでした。出発地点を入力してください。'
+      return
+    }
+
+    departure.value = placeName
+  } catch (error) {
+    if (isAbortError(error)) return
+
+    console.error('出発地点の地名を取得できませんでした。', error)
+    departureLocationError.value = '地名の取得に失敗しました。出発地点を入力してください。'
+  } finally {
+    if (reverseGeocodeController === controller) {
+      reverseGeocodeController = null
+      isResolvingDeparture.value = false
+    }
+  }
+}
+
+const selectTravelOption = (option: TravelOption) => {
+  const wasDepartureMode = needsDeparture.value
+
+  cancelAllGeocoding()
+  travelOption.value = option
+
+  if (option === 'walking' || option === 'driving') {
+    transportMode.value = option
+
+    const config = travelTimeConfig.value
+    if (config) {
+      const isValidCurrentTime =
+        travelTime.value !== null &&
+        travelTime.value >= config.min &&
+        travelTime.value <= config.max &&
+        (travelTime.value - config.min) % config.step === 0
+
+      if (!isValidCurrentTime) {
+        travelTime.value = config.defaultValue
+      }
+    }
+
+    if (!wasDepartureMode) {
+      departure.value = ''
+      departureLocation.value = null
+      departureLocationError.value = ''
+    }
+
+    return
+  }
+
+  transportMode.value = option === 'transit' ? 'transit' : null
+  travelTime.value = null
+  clearDepartureState()
+}
+
+const normalizePreferredArea = (value: string) =>
+  value.normalize('NFKC').trim().replace(/\s+/g, ' ')
+
+const addPreferredArea = () => {
+  preferredAreaError.value = ''
+
+  if (preferredAreas.value.length >= preferredAreaLimit) {
+    preferredAreaError.value = `登録できるのは最大${preferredAreaLimit}つまでです。`
+    return
+  }
+
+  const value = normalizePreferredArea(preferredAreaInput.value)
+
+  if (!value) {
+    preferredAreaError.value = '場所またはジャンルを1つ入力してください。'
+    return
+  }
+
+  preferredAreas.value.push(value)
+  preferredAreaInput.value = ''
+}
+
+const removePreferredArea = (index: number) => {
+  preferredAreas.value.splice(index, 1)
+  preferredAreaError.value = ''
+}
+
+onUnmounted(() => {
+  cancelAllGeocoding()
+})
 
 type CalendarDay = {
   key: string
@@ -159,12 +435,10 @@ watch(
     if (!response) return
 
     selectedDates.value = response.availableDates.map((savedDate) => {
-      // 新形式
       if (/^\d{4}-\d{2}-\d{2}$/.test(savedDate)) {
         return savedDate
       }
 
-      // 旧モック形式 9/12 などにも対応
       const [month, day] = savedDate.split('/').map(Number)
 
       const matchingDate = calendarMonths.value
@@ -175,10 +449,30 @@ watch(
     })
 
     selectedActivities.value = [...response.activities]
-
-    departure.value = response.departure
+    transportMode.value = response.transportMode
     travelTime.value = response.travelTime
-    preferredArea.value = response.preferredArea ?? ''
+    preferredAreas.value = [...(response.preferredAreas ?? [])]
+    preferredAreaInput.value = ''
+
+    if (response.transportMode === 'walking') {
+      travelOption.value = 'walking'
+    } else if (response.transportMode === 'driving') {
+      travelOption.value = 'driving'
+    } else if (response.transportMode === 'transit') {
+      travelOption.value = 'transit'
+    } else {
+      travelOption.value = 'none'
+    }
+
+    if (response.transportMode === 'walking' || response.transportMode === 'driving') {
+      departure.value = response.departure
+      departureLocation.value = response.departureLocation
+    } else {
+      departure.value = ''
+      departureLocation.value = null
+    }
+
+    departureLocationError.value = ''
   },
   {
     immediate: true,
@@ -207,24 +501,47 @@ const toggleActivity = (activity: string) => {
     : [...values, activity]
 }
 
-const canSubmit = computed(
-  () =>
-    selectedDates.value.length > 0 &&
-    selectedActivities.value.length > 0 &&
-    Boolean(departure.value.trim()) &&
-    Boolean(travelTime.value),
-)
+const canSubmit = computed(() => {
+  if (
+    selectedDates.value.length === 0 ||
+    selectedActivities.value.length === 0 ||
+    !travelOption.value ||
+    isResolvingDeparture.value ||
+    isSearchingDeparture.value ||
+    isDepartureSearchPending.value
+  ) {
+    return false
+  }
 
-const submitAnswer = () => {
+  if (needsDeparture.value) {
+    return (
+      Boolean(departure.value.trim()) &&
+      Boolean(departureLocation.value) &&
+      travelTime.value !== null
+    )
+  }
+
+  if (travelOption.value === 'transit') {
+    return preferredAreas.value.length >= 1
+  }
+
+  return true
+})
+
+const submitAnswer = async () => {
   if (!canSubmit.value) return
 
-  scheduleStore.submitResponse(scheduleId.value, {
+  const saved = await scheduleStore.submitResponse(scheduleId.value, {
     availableDates: selectedDates.value,
     activities: selectedActivities.value,
-    departure: departure.value.trim(),
-    travelTime: travelTime.value,
-    preferredArea: preferredArea.value.trim() || undefined,
+    departure: needsDeparture.value ? departure.value.trim() : '',
+    departureLocation: needsDeparture.value ? departureLocation.value : null,
+    transportMode: transportMode.value,
+    travelTime: needsDeparture.value ? travelTime.value : null,
+    preferredAreas: [...preferredAreas.value],
   })
+
+  if (!saved) return
 
   router.push({
     name: 'schedule-detail',
@@ -233,11 +550,11 @@ const submitAnswer = () => {
     },
   })
 }
+
 const goBack = () => {
   router.back()
 }
 </script>
-
 <template>
   <main class="page condition-input">
     <template v-if="schedule">
@@ -255,26 +572,7 @@ const goBack = () => {
         <!-- いつ遊べる？ -->
         <section class="condition-input__section">
           <div class="condition-input__section-heading">
-            <svg class="condition-input__section-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <rect
-                x="3"
-                y="5"
-                width="18"
-                height="16"
-                rx="2"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              />
-
-              <path
-                d="M7 3V7 M17 3V7 M3 10H21"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-              />
-            </svg>
+            <AppIcon class="condition-input__section-icon" name="calendar" />
 
             <h2>いつ遊べる？</h2>
           </div>
@@ -290,7 +588,7 @@ const goBack = () => {
                 aria-label="前の月"
                 @click="goPreviousMonth"
               >
-                ‹
+                <AppIcon name="chevron-left" :size="20" />
               </button>
 
               <h3>{{ currentCalendar.year }}年{{ currentCalendar.month }}月</h3>
@@ -302,7 +600,7 @@ const goBack = () => {
                 aria-label="次の月"
                 @click="goNextMonth"
               >
-                ›
+                <AppIcon name="chevron-right" :size="20" />
               </button>
             </div>
 
@@ -345,31 +643,7 @@ const goBack = () => {
         <!-- なにしたい？ -->
         <section class="condition-input__section">
           <div class="condition-input__section-heading">
-            <svg class="condition-input__section-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M12 3L13.5 7.5L18 9L13.5 10.5L12 15L10.5 10.5L6 9L10.5 7.5L12 3Z"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linejoin="round"
-              />
-
-              <path
-                d="M19 14L19.8 16.2L22 17L19.8 17.8L19 20L18.2 17.8L16 17L18.2 16.2L19 14Z"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linejoin="round"
-              />
-
-              <path
-                d="M5 14L5.7 16L8 17L5.7 18L5 20L4.3 18L2 17L4.3 16L5 14Z"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linejoin="round"
-              />
-            </svg>
+            <AppIcon class="condition-input__section-icon" name="sparkles" />
 
             <h2>なにしたい？</h2>
           </div>
@@ -387,61 +661,216 @@ const goBack = () => {
           </div>
         </section>
 
-        <!-- どこまでいける？ -->
-        <section class="condition-input__section">
+        <!-- どうやって行く？ -->
+        <section class="condition-input__section condition-input__section--travel">
           <div class="condition-input__section-heading">
-            <svg class="condition-input__section-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M12 21C12 21 19 15.2 19 9.5C19 5.9 15.9 3 12 3C8.1 3 5 5.9 5 9.5C5 15.2 12 21 12 21Z"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linejoin="round"
-              />
+            <AppIcon class="condition-input__section-icon" name="route" />
 
-              <circle cx="12" cy="9.5" r="2.5" fill="none" stroke="currentColor" stroke-width="2" />
-            </svg>
-
-            <h2>どこまでいける？</h2>
+            <h2>どうやって行く？</h2>
           </div>
 
-          <BaseInput v-model="departure" label="出発地点" placeholder="例：東京駅" required />
+          <p>まず移動方法を選ぶと、必要な条件だけ表示されます。</p>
 
-          <fieldset class="condition-input__travel-time">
-            <legend>移動できる時間</legend>
+          <fieldset class="condition-input__transport">
+            <legend class="condition-input__sr-only">移動方法</legend>
 
-            <label
-              v-for="option in ['徒歩圏内', '30分以内', '1時間以内', '2時間以内']"
-              :key="option"
-              class="condition-input__radio-label"
-            >
-              <input
-                v-model="travelTime"
-                class="condition-input__radio"
-                type="radio"
-                :value="option"
-              />
+            <div class="condition-input__transport-options">
+              <label
+                v-for="option in travelOptions"
+                :key="option.value"
+                class="condition-input__transport-option"
+                :class="[
+                  `condition-input__transport-option--${option.value}`,
+                  {
+                    'condition-input__transport-option--selected': travelOption === option.value,
+                  },
+                ]"
+              >
+                <input
+                  class="condition-input__radio"
+                  type="radio"
+                  name="transport-mode"
+                  :value="option.value"
+                  :checked="travelOption === option.value"
+                  @change="selectTravelOption(option.value)"
+                />
 
-              <span>
-                {{ option === '徒歩圏内' ? option : `電車で${option}` }}
-              </span>
-            </label>
+                <AppIcon class="condition-input__transport-icon" :name="option.icon" :size="20" />
+                <span>{{ option.label }}</span>
+              </label>
+            </div>
           </fieldset>
 
-          <BaseInput
-            v-model="preferredArea"
-            label="行ってみたい場所（任意）"
-            placeholder="例：新宿、横浜"
-          />
-        </section>
+          <template v-if="needsDeparture">
+            <div class="condition-input__conditional-card condition-input__conditional-card--map">
+              <div class="condition-input__conditional-heading">
+                <strong>出発地点</strong>
+                <span>必須</span>
+              </div>
 
-        <BaseButton type="submit" :disabled="!canSubmit">
-          {{ existingResponse ? '回答を更新' : '回答を送信' }}
-        </BaseButton>
+              <p>
+                文字で検索するか、地図をタップしてください。検索中はもう片方を操作できないようにしています。
+              </p>
+
+              <fieldset
+                class="condition-input__departure-fieldset"
+                :disabled="isResolvingDeparture"
+              >
+                <label class="condition-input__text-label" for="departure"> 出発地点 </label>
+                <input
+                  id="departure"
+                  v-model="departure"
+                  class="condition-input__text-input"
+                  type="text"
+                  :placeholder="departurePlaceholder"
+                  autocomplete="off"
+                  required
+                  @input="handleDepartureInput(($event.target as HTMLInputElement).value)"
+                />
+              </fieldset>
+
+              <MapPicker
+                v-model="departureLocation"
+                :disabled="isMapInteractionDisabled"
+                @location-selected="handleLocationSelected"
+              />
+
+              <p v-if="isResolvingDeparture" class="condition-input__status">
+                地点情報を取得しています...
+              </p>
+              <p v-else-if="isDepartureSearchPending" class="condition-input__status">
+                入力が終わるのを待っています...
+              </p>
+              <p v-else-if="isSearchingDeparture" class="condition-input__status">
+                地点を検索しています...
+              </p>
+              <p
+                v-else-if="departureLocationError"
+                class="condition-input__status condition-input__status--error"
+              >
+                {{ departureLocationError }}
+              </p>
+              <p
+                v-else-if="departureLocation"
+                class="condition-input__status condition-input__status--ok"
+              >
+                <AppIcon name="check-circle" :size="18" />
+                地点を登録できました
+              </p>
+            </div>
+
+            <div v-if="travelTimeConfig" class="condition-input__travel-slider">
+              <div class="condition-input__travel-slider-heading">
+                <label for="travel-time">どのくらいまで行ける？</label>
+                <strong>{{ travelTime }}分以内</strong>
+              </div>
+
+              <input
+                id="travel-time"
+                v-model.number="travelTime"
+                class="condition-input__range"
+                type="range"
+                :min="travelTimeConfig.min"
+                :max="travelTimeConfig.max"
+                :step="travelTimeConfig.step"
+                :style="{ '--range-progress': travelTimeProgress }"
+              />
+
+              <div class="condition-input__range-labels" aria-hidden="true">
+                <span v-for="time in travelTimeOptions" :key="time">{{ time }}</span>
+              </div>
+            </div>
+          </template>
+
+          <div
+            v-else-if="travelOption === 'transit'"
+            class="condition-input__travel-message condition-input__travel-message--transit"
+          >
+            <strong class="condition-input__travel-message-heading">
+              <AppIcon name="train" :size="20" />
+              電車は「ここに行きたい！」方式
+            </strong>
+            <p>出発地点や移動時間は決めず、行きたい候補を投票します。</p>
+          </div>
+
+          <div
+            v-else-if="travelOption === 'none'"
+            class="condition-input__travel-message condition-input__travel-message--none"
+          >
+            <strong class="condition-input__travel-message-heading">
+              <AppIcon name="no-condition" :size="20" />
+              移動条件はおまかせ
+            </strong>
+            <p>出発地点や移動時間を指定せず、行きたい候補だけ自由に足せます。</p>
+          </div>
+
+          <div v-if="travelOption" class="condition-input__vote-card">
+            <div class="condition-input__vote-heading">
+              <div>
+                <strong>行きたい場所・ジャンル</strong>
+                <span v-if="travelOption === 'transit'" class="condition-input__required">
+                  電車は1つ以上必須
+                </span>
+                <span v-else>任意</span>
+              </div>
+
+              <span>{{ preferredAreas.length }}/{{ preferredAreaLimit }}</span>
+            </div>
+
+            <p>1枠につき1つ入力してください。例：横浜 / カフェ / 公園</p>
+            <p class="condition-input__vote-note">
+              同じ候補を複数入れてOK。そのぶん「行きたい！」票として集計されます。
+            </p>
+
+            <div class="condition-input__vote-input-row">
+              <input
+                v-model="preferredAreaInput"
+                class="condition-input__text-input"
+                type="text"
+                maxlength="40"
+                placeholder="例：カフェ"
+                :disabled="preferredAreas.length >= preferredAreaLimit"
+                @keydown.enter.prevent="addPreferredArea"
+              />
+              <button
+                type="button"
+                class="condition-input__add-vote"
+                :disabled="preferredAreas.length >= preferredAreaLimit"
+                @click="addPreferredArea"
+              >
+                追加
+              </button>
+            </div>
+
+            <div v-if="preferredAreas.length" class="condition-input__vote-chips">
+              <button
+                v-for="(area, index) in preferredAreas"
+                :key="`${area}-${index}`"
+                type="button"
+                class="condition-input__vote-chip"
+                :class="`condition-input__vote-chip--${index % 5}`"
+                :aria-label="`${area}を削除`"
+                @click="removePreferredArea(index)"
+              >
+                <span>{{ area }}</span>
+                <AppIcon name="x" :size="16" />
+              </button>
+            </div>
+
+            <p
+              v-if="preferredAreaError"
+              class="condition-input__status condition-input__status--error"
+            >
+              {{ preferredAreaError }}
+            </p>
+          </div>
+        </section>
+        <!-- 回答送信 -->
+        <div class="condition-input__submit">
+          <BaseButton type="submit" :disabled="!canSubmit"> 回答を送る </BaseButton>
+        </div>
       </form>
     </template>
-
-    <p v-else>予定が見つかりません。</p>
   </main>
 </template>
 
@@ -630,33 +1059,170 @@ const goBack = () => {
     gap: $spacing-1;
   }
 
-  &__travel-time {
-    display: flex;
-    flex-direction: column;
-    gap: $spacing-1;
-
+  &__departure-fieldset {
+    min-width: 0;
     margin: 0;
     padding: 0;
+    border: 0;
 
+    &:disabled {
+      opacity: 0.72;
+      cursor: wait;
+    }
+  }
+
+  &__transport {
+    margin: 0;
+    padding: 0;
     border: 0;
 
     legend {
       margin-bottom: $spacing-1;
-
       color: $color-text;
       font-weight: $font-weight-semibold;
     }
   }
 
-  &__radio-label {
+  &__transport-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: $spacing-1;
+  }
+
+  &__transport-option {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
 
-    min-height: 44px;
+    min-height: 48px;
+    padding: 0 $spacing-2;
 
+    border: 1px solid $color-neutral-300;
+    border-radius: $radius-input;
+    background: $color-surface;
     color: $color-text;
+
     cursor: pointer;
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease;
+
+    &--selected {
+      border-color: $color-primary;
+      background: $color-primary-light;
+      font-weight: $font-weight-semibold;
+    }
+  }
+
+  &__travel-slider {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+
+    padding: $spacing-2;
+
+    border: 1px solid $color-neutral-300;
+    border-radius: $radius-input;
+    background: $color-surface;
+  }
+
+  &__travel-slider-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $spacing-2;
+
+    label {
+      color: $color-text;
+      font-weight: $font-weight-semibold;
+    }
+
+    strong {
+      flex-shrink: 0;
+      color: $color-primary-dark;
+      font-size: $font-size-body;
+    }
+  }
+
+  &__range {
+    appearance: none;
+    width: 100%;
+    height: 8px;
+    margin: 4px 0 0;
+    border-radius: $radius-chip;
+    background: linear-gradient(
+      to right,
+      $color-primary 0%,
+      $color-primary var(--range-progress),
+      $color-neutral-200 var(--range-progress),
+      $color-neutral-200 100%
+    );
+    cursor: pointer;
+
+    &::-webkit-slider-runnable-track {
+      height: 8px;
+      border-radius: $radius-chip;
+      background: transparent;
+    }
+
+    &::-webkit-slider-thumb {
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      margin-top: -6px;
+      border: 2px solid $color-surface;
+      border-radius: 50%;
+      background: $color-primary;
+      box-shadow: 0 1px 4px rgba($color-neutral-900, 0.2);
+    }
+
+    &::-moz-range-track {
+      height: 8px;
+      border-radius: $radius-chip;
+      background: transparent;
+    }
+
+    &::-moz-range-progress {
+      height: 8px;
+      border-radius: $radius-chip;
+      background: $color-primary;
+    }
+
+    &::-moz-range-thumb {
+      box-sizing: border-box;
+      width: 20px;
+      height: 20px;
+      border: 2px solid $color-surface;
+      border-radius: 50%;
+      background: $color-primary;
+      box-shadow: 0 1px 4px rgba($color-neutral-900, 0.2);
+    }
+
+    &:focus-visible {
+      outline: 3px solid $color-primary-light;
+      outline-offset: 4px;
+    }
+  }
+
+  &__range-labels {
+    display: flex;
+    justify-content: space-between;
+    gap: 4px;
+
+    color: $color-neutral-600;
+    font-size: 11px;
+
+    span {
+      min-width: 16px;
+      text-align: center;
+    }
+  }
+
+  &__travel-none {
+    padding: 12px $spacing-2;
+    border-radius: $radius-input;
+    border: 1px dashed $color-neutral-300;
+    background: $color-surface;
   }
 
   &__radio {
@@ -708,6 +1274,265 @@ const goBack = () => {
     &:focus-visible {
       outline: 3px solid $color-primary-light;
       outline-offset: 2px;
+    }
+  }
+  &__section--travel {
+    padding: $spacing-2;
+    border-radius: $radius-card;
+    background: linear-gradient(180deg, rgba(255, 248, 252, 0.88), rgba(247, 251, 255, 0.92));
+  }
+
+  &__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  &__transport-icon {
+    .condition-input__transport-option--walking & {
+      color: #4c9870;
+    }
+
+    .condition-input__transport-option--driving & {
+      color: #5a83bf;
+    }
+
+    .condition-input__transport-option--transit & {
+      color: #8a64b1;
+    }
+
+    .condition-input__transport-option--none & {
+      color: #a57d28;
+    }
+  }
+
+  &__transport-option--walking.condition-input__transport-option--selected {
+    border-color: #7cc9a7;
+    background: #eaf8f1;
+  }
+
+  &__transport-option--driving.condition-input__transport-option--selected {
+    border-color: #80aeea;
+    background: #eef5ff;
+  }
+
+  &__transport-option--transit.condition-input__transport-option--selected {
+    border-color: #c19be7;
+    background: #f7efff;
+  }
+
+  &__transport-option--none.condition-input__transport-option--selected {
+    border-color: #e9b967;
+    background: #fff8df;
+  }
+
+  &__conditional-card,
+  &__vote-card,
+  &__travel-message {
+    padding: $spacing-2;
+    border: 1px solid $color-neutral-300;
+    border-radius: $radius-card;
+    background: $color-surface;
+  }
+
+  &__conditional-card,
+  &__vote-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  &__conditional-card > p {
+    margin: 0;
+    color: $color-neutral-600;
+    font-size: $font-size-caption;
+  }
+
+  &__conditional-heading,
+  &__vote-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $spacing-1;
+
+    > span,
+    > div > span {
+      color: $color-neutral-600;
+      font-size: $font-size-caption;
+    }
+  }
+
+  &__required {
+    display: inline-flex;
+    margin-left: 6px;
+    padding: 2px 7px;
+    border-radius: $radius-chip;
+    background: #fce9ef;
+    color: #a94e70 !important;
+  }
+
+  &__text-label {
+    display: block;
+    margin-bottom: 6px;
+    color: $color-text;
+    font-size: $font-size-caption;
+    font-weight: $font-weight-semibold;
+  }
+
+  &__text-input {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 46px;
+    padding: 0 $spacing-2;
+    border: 1px solid $color-neutral-300;
+    border-radius: $radius-input;
+    background: $color-surface;
+    color: $color-text;
+    font: inherit;
+
+    &:focus {
+      border-color: $color-primary;
+      outline: 3px solid $color-primary-light;
+      outline-offset: 1px;
+    }
+
+    &:disabled {
+      background: $color-neutral-100;
+      cursor: not-allowed;
+    }
+  }
+
+  &__status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-size: $font-size-caption;
+
+    &--error {
+      color: #b34f63 !important;
+    }
+
+    &--ok {
+      color: #438d6b !important;
+    }
+  }
+
+  &__travel-message {
+    strong,
+    p {
+      margin: 0;
+    }
+
+    p {
+      margin-top: 6px;
+      color: $color-neutral-600;
+      font-size: $font-size-caption;
+    }
+
+    &--transit {
+      border-color: #dbc4f2;
+      background: #faf5ff;
+    }
+
+    &--none {
+      border-color: #f0d995;
+      background: #fffaf0;
+    }
+  }
+
+  &__travel-message-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .condition-input__travel-message--transit & {
+      color: #8a64b1;
+    }
+
+    .condition-input__travel-message--none & {
+      color: #a57d28;
+    }
+  }
+
+  &__vote-card {
+    border-color: #ead8ef;
+    background: linear-gradient(135deg, #fff8fb, #f7fbff);
+  }
+
+  &__vote-card > p {
+    margin: 0;
+    color: $color-neutral-600;
+    font-size: $font-size-caption;
+  }
+
+  &__vote-note {
+    padding: 8px 10px;
+    border-radius: $radius-input;
+    background: #fff5d9;
+    color: #775a18 !important;
+  }
+
+  &__vote-input-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: $spacing-1;
+  }
+
+  &__add-vote {
+    min-width: 72px;
+    padding: 0 $spacing-2;
+    border: 0;
+    border-radius: $radius-button;
+    background: $color-primary;
+    color: white;
+    font: inherit;
+    font-weight: $font-weight-semibold;
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+  }
+
+  &__vote-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  &__vote-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 34px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    color: $color-text;
+    font: inherit;
+    cursor: pointer;
+
+    &--0 {
+      background: #ffe7ef;
+    }
+    &--1 {
+      background: #e8f7ef;
+    }
+    &--2 {
+      background: #e9f2ff;
+    }
+    &--3 {
+      background: #f3eaff;
+    }
+    &--4 {
+      background: #fff2cf;
     }
   }
 }

@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import BaseButton from '@/components/common/BaseButton.vue'
+import AppIcon from '@/components/common/AppIcon.vue'
 import BottomNavigation from '@/components/common/BottomNavigation.vue'
 import ResponseStatus from '@/components/schedule/ResponseStatus.vue'
 import { useScheduleStore } from '@/stores/schedule'
@@ -16,6 +17,50 @@ const scheduleId = computed(() => String(route.params.id))
 const schedule = computed(() => scheduleStore.getScheduleById(scheduleId.value))
 
 const currentResponse = computed(() => scheduleStore.getCurrentUserResponse(scheduleId.value))
+
+const formatDate = (value: string) => {
+  const [year, month, day] = value.split('-').map(Number)
+
+  if (!year || !month || !day) return value
+
+  return `${year}/${month}/${day}`
+}
+
+const formattedAvailableDates = computed(
+  () => currentResponse.value?.availableDates.map(formatDate) ?? [],
+)
+
+const isDepartureMode = computed(
+  () =>
+    currentResponse.value?.transportMode === 'walking' ||
+    currentResponse.value?.transportMode === 'driving',
+)
+
+const transportLabel = computed(() => {
+  switch (currentResponse.value?.transportMode) {
+    case 'walking':
+      return '徒歩'
+    case 'driving':
+      return '車'
+    case 'transit':
+      return '電車'
+    default:
+      return '条件なし'
+  }
+})
+
+const transportIcon = computed(() => {
+  switch (currentResponse.value?.transportMode) {
+    case 'walking':
+      return 'walking' as const
+    case 'driving':
+      return 'car' as const
+    case 'transit':
+      return 'train' as const
+    default:
+      return 'no-condition' as const
+  }
+})
 
 const formatPeriod = (startDate: string, endDate: string) => {
   const format = (value: string) => {
@@ -118,98 +163,75 @@ const sortedMembers = computed(() => {
 
           <div v-if="currentResponse" class="schedule-detail__answer">
             <!-- 日程 -->
-            <p class="schedule-detail__answer-row">
-              <svg class="schedule-detail__answer-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <rect
-                  x="3"
-                  y="5"
-                  width="18"
-                  height="16"
-                  rx="2"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                />
+            <div class="schedule-detail__answer-row">
+              <AppIcon class="schedule-detail__answer-icon" name="calendar" :size="20" />
 
-                <path
-                  d="M7 3V7 M17 3V7 M3 10H21"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                />
-              </svg>
-
-              <span>
-                {{ currentResponse.availableDates.join('、') }}
-              </span>
-            </p>
+              <div class="schedule-detail__answer-content">
+                <span class="schedule-detail__answer-label">候補日</span>
+                <span>{{ formattedAvailableDates.join('、') }}</span>
+              </div>
+            </div>
 
             <!-- やりたいこと -->
-            <p class="schedule-detail__answer-row">
-              <svg class="schedule-detail__answer-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
+            <div class="schedule-detail__answer-row">
+              <AppIcon class="schedule-detail__answer-icon" name="sparkles" :size="20" />
 
-                <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" />
-              </svg>
+              <div class="schedule-detail__answer-content">
+                <span class="schedule-detail__answer-label">やりたいこと</span>
+                <span>{{ currentResponse.activities.join('、') }}</span>
+              </div>
+            </div>
 
-              <span>
-                {{ currentResponse.activities.join('、') }}
-              </span>
-            </p>
+            <!-- 交通手段 -->
+            <div class="schedule-detail__answer-row">
+              <AppIcon class="schedule-detail__answer-icon" :name="transportIcon" :size="20" />
 
-            <!-- 出発地点＋移動時間 -->
-            <p class="schedule-detail__answer-row">
-              <svg class="schedule-detail__answer-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="
-                    M12 21
-                    C12 21 19 15.2 19 9.5
-                    C19 5.9 15.9 3 12 3
-                    C8.1 3 5 5.9 5 9.5
-                    C5 15.2 12 21 12 21Z
-                  "
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linejoin="round"
-                />
+              <div class="schedule-detail__answer-content">
+                <span class="schedule-detail__answer-label">交通手段</span>
+                <span>{{ transportLabel }}</span>
+              </div>
+            </div>
 
-                <circle
-                  cx="12"
-                  cy="9.5"
-                  r="2.5"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                />
-              </svg>
+            <!-- 出発地点 -->
+            <div v-if="isDepartureMode" class="schedule-detail__answer-row">
+              <AppIcon class="schedule-detail__answer-icon" name="map-pin" :size="20" />
 
-              <span>
-                {{ currentResponse.departure }}
-                から
-                {{ currentResponse.travelTime }}
-              </span>
-            </p>
+              <div class="schedule-detail__answer-content">
+                <span class="schedule-detail__answer-label">出発地点</span>
+                <span>{{ currentResponse.departure }}</span>
+              </div>
+            </div>
+
+            <!-- 移動可能時間 -->
+            <div v-if="isDepartureMode" class="schedule-detail__answer-row">
+              <AppIcon class="schedule-detail__answer-icon" name="clock" :size="20" />
+
+              <div class="schedule-detail__answer-content">
+                <span class="schedule-detail__answer-label">移動可能時間</span>
+                <span>{{ currentResponse.travelTime }}分以内</span>
+              </div>
+            </div>
 
             <!-- 希望エリア -->
-            <p v-if="currentResponse.preferredArea" class="schedule-detail__answer-row">
-              <svg class="schedule-detail__answer-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M4 6L9 4L15 6L20 4V18L15 20L9 18L4 20V6Z"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linejoin="round"
-                />
+            <div
+              v-if="currentResponse.preferredAreas?.length"
+              class="schedule-detail__answer-row"
+            >
+              <AppIcon class="schedule-detail__answer-icon" name="place-vote" :size="20" />
 
-                <path d="M9 4V18 M15 6V20" fill="none" stroke="currentColor" stroke-width="2" />
-              </svg>
-
-              <span>
-                {{ currentResponse.preferredArea }}
-              </span>
-            </p>
+              <div class="schedule-detail__answer-content">
+                <span class="schedule-detail__answer-label">行きたい場所・ジャンル</span>
+                <div class="schedule-detail__answer-chips">
+                  <span
+                    v-for="(area, index) in currentResponse.preferredAreas"
+                    :key="`${area}-${index}`"
+                    class="schedule-detail__answer-chip"
+                  >
+                    {{ area }}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <p v-else class="schedule-detail__no-answer">まだ回答していません。</p>
@@ -227,29 +249,7 @@ const sortedMembers = computed(() => {
 
           <BaseButton variant="secondary" @click="goInvite">
             <span class="schedule-detail__invite-button">
-              <svg class="schedule-detail__invite-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="9" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="2" />
-
-                <path
-                  d="
-                    M3 19
-                    C3 15.7 5.7 13 9 13
-                    C11.4 13 13.5 14.4 14.4 16.5
-                  "
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                />
-
-                <path
-                  d="M18 11V19 M14 15H22"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                />
-              </svg>
+              <AppIcon class="schedule-detail__invite-icon" name="user-plus" :size="22" />
 
               <span>友達を招待</span>
             </span>
@@ -401,6 +401,34 @@ const sortedMembers = computed(() => {
 
     color: $color-text;
     line-height: 1.55;
+  }
+
+  &__answer-content {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  &__answer-label {
+    color: $color-neutral-600;
+    font-size: $font-size-caption;
+    font-weight: $font-weight-semibold;
+  }
+
+  &__answer-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  &__answer-chip {
+    padding: 4px 10px;
+    border-radius: $radius-chip;
+    background: rgba(255, 255, 255, 0.72);
+    color: $color-text;
+    font-size: $font-size-caption;
   }
 
   &__answer-icon {

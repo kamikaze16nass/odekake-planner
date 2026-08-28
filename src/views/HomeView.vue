@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import appMark from '@/assets/images/app-mark.png'
 
@@ -12,6 +12,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import { useScheduleStore } from '@/stores/schedule'
 
 const router = useRouter()
+const route = useRoute()
 const scheduleStore = useScheduleStore()
 
 const inviteCode = ref('')
@@ -22,7 +23,7 @@ const hasDisplayName = computed(() => {
   return scheduleStore.hasDisplayName
 })
 
-const saveDisplayName = () => {
+const saveDisplayName = async () => {
   const saved = scheduleStore.setDisplayName(displayNameInput.value)
 
   if (!saved) {
@@ -30,6 +31,50 @@ const saveDisplayName = () => {
   }
 
   displayNameInput.value = ''
+
+  // 招待URLから来た場合は、名前保存後にそのまま参加して回答画面へ進む
+  if (route.name === 'join') {
+    const code = String(route.params.inviteCode ?? '')
+      .trim()
+      .toUpperCase()
+
+    if (!code) {
+      return
+    }
+
+    const schedule = await scheduleStore.findScheduleByInviteCode(code)
+
+    if (!schedule) {
+      await router.replace({
+        name: 'home',
+        query: {
+          inviteError: 'not-found',
+        },
+      })
+
+      return
+    }
+
+    const joined = await scheduleStore.joinSchedule(schedule.id)
+
+    if (!joined) {
+      await router.replace({
+        name: 'home',
+        query: {
+          inviteError: 'join-failed',
+        },
+      })
+
+      return
+    }
+
+    await router.replace({
+      name: 'condition-input',
+      params: {
+        id: schedule.id,
+      },
+    })
+  }
 }
 
 const unansweredSchedule = computed(() => scheduleStore.unansweredSchedules[0])

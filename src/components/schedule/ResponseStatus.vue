@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppIcon from '@/components/common/AppIcon.vue'
+
 defineProps<{
   name: string
   answered: boolean
@@ -12,7 +14,7 @@ defineProps<{
       :class="{ 'response-status__icon--answered': answered }"
       aria-hidden="true"
     >
-      {{ answered ? '✓' : '•' }}
+      <AppIcon :name="answered ? 'check-circle' : 'clock'" :size="18" />
     </span>
 
     <span class="response-status__name">
@@ -44,16 +46,14 @@ defineProps<{
     width: 20px;
     height: 20px;
 
-    border: 1px solid $color-neutral-300;
+    // border: 1px solid $color-neutral-300;
     border-radius: 50%;
 
     color: $color-neutral-400;
-    font-size: 11px;
-
     &--answered {
       border-color: $color-success;
-      background-color: $color-success;
-      color: $color-neutral-0;
+      background-color: rgba($color-success, 0.12);
+      color: $color-success;
     }
   }
 

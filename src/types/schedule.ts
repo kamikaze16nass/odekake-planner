@@ -5,12 +5,29 @@ export type Member = {
   name: string
 }
 
+export type TransportMode =
+  | 'walking'
+  | 'driving'
+  | 'transit'
+  | null
+
+export type LocationValue = {
+  lat: number
+  lng: number
+}
+
 export type ScheduleResponse = {
   userId: string
   availableDates: string[]
   activities: string[]
+
   departure: string
-  travelTime: string
+  departureLocation: LocationValue | null
+
+  transportMode: TransportMode
+  travelTime: number | null
+
+  preferredAreas?: string[]
   preferredArea?: string
 }
 
@@ -29,6 +46,10 @@ export type ScheduleResult = {
   dates: ResultItem[]
   activities: ResultItem[]
   areas: ResultItem[]
+  transportModes: ResultItem[]
+  walkingTravelTimes: ResultItem[]
+  drivingTravelTimes: ResultItem[]
+  travelTimes: ResultItem[]
 }
 
 export type Schedule = {

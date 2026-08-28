@@ -45,9 +45,21 @@ type ResponseRow = {
   user_id: string
   available_dates: string[]
   activities: string[]
+
   departure: string
-  travel_time: string
+  departure_lat: number | null
+  departure_lng: number | null
+
+  transport_mode:
+  | 'walking'
+  | 'driving'
+  | 'transit'
+  | null
+
+  travel_time: number | null
+
   preferred_area: string | null
+  preferred_areas: string[] | null
   created_at: string
   updated_at: string
 }
@@ -313,35 +325,72 @@ export const useScheduleStore =
               values: string[],
             ): ResultItem[] => {
               const counts =
-                new Map<
-                  string,
-                  number
-                >()
+                new Map<string, number>()
 
               values.forEach((value) => {
                 counts.set(
                   value,
-                  (counts.get(value) ??
-                    0) + 1,
+                  (counts.get(value) ?? 0) + 1,
                 )
               })
 
-              return Array.from(
-                counts.entries(),
-              )
-                .map(
-                  ([
-                    label,
-                    count,
-                  ]) => ({
-                    label,
-                    count,
-                  }),
-                )
-                .sort(
-                  (a, b) =>
-                    b.count - a.count,
-                )
+              return Array.from(counts.entries())
+                .map(([label, count]) => ({
+                  label,
+                  count,
+                }))
+                .sort((a, b) => b.count - a.count)
+            }
+
+            const normalizeVoteKey = (
+              value: string,
+            ) =>
+              value
+                .normalize('NFKC')
+                .trim()
+                .replace(/\s+/g, ' ')
+                .toLocaleLowerCase('ja-JP')
+
+            const countVoteValues = (
+              values: string[],
+            ): ResultItem[] => {
+              const counts =
+                new Map<
+                  string,
+                  {
+                    label: string
+                    count: number
+                  }
+                >()
+
+              values.forEach((rawValue) => {
+                const label =
+                  rawValue
+                    .normalize('NFKC')
+                    .trim()
+                    .replace(/\s+/g, ' ')
+
+                if (!label) return
+
+                const key =
+                  normalizeVoteKey(label)
+
+                const current =
+                  counts.get(key)
+
+                if (current) {
+                  current.count += 1
+                  return
+                }
+
+                counts.set(key, {
+                  label,
+                  count: 1,
+                })
+              })
+
+              return Array.from(counts.values())
+                .sort((a, b) => b.count - a.count)
             }
 
             const dates = countValues(
@@ -405,19 +454,92 @@ export const useScheduleStore =
               })
             }
 
-            const areas = countValues(
-              responses
-                .map(
-                  (response) =>
-                    response.preferredArea,
-                )
-                .filter(
+            // 行きたい場所・ジャンルは「1枠 = 1票」。
+            // 同じ人が同じ候補を複数登録した場合も、そのまま複数票として数える。
+            const areas = countVoteValues(
+              responses.flatMap(
+                (response) =>
+                  response.preferredAreas ??
                   (
-                    area,
-                  ): area is string =>
-                    Boolean(area),
-                ),
+                    response.preferredArea
+                      ? [response.preferredArea]
+                      : []
+                  ),
+              ),
             )
+
+            const transportModes = countValues(
+              responses.map((response) => {
+                if (
+                  response.transportMode ===
+                  'walking'
+                ) {
+                  return '徒歩'
+                }
+
+                if (
+                  response.transportMode ===
+                  'driving'
+                ) {
+                  return '車'
+                }
+
+                if (
+                  response.transportMode ===
+                  'transit'
+                ) {
+                  return '電車'
+                }
+
+                return '条件なし'
+              }),
+            )
+
+            const buildTravelTimes = (
+              mode: 'walking' | 'driving',
+              options: number[],
+            ): ResultItem[] =>
+              options
+                .map((minutes) => {
+                  const count =
+                    responses.filter(
+                      (response) =>
+                        response.transportMode ===
+                          mode &&
+                        response.travelTime !==
+                          null &&
+                        response.travelTime >=
+                          minutes,
+                    ).length
+
+                  return {
+                    label: `${minutes}分以内`,
+                    count,
+                  }
+                })
+                .filter(
+                  (item) =>
+                    item.count > 0,
+                )
+
+            const walkingTravelTimes =
+              buildTravelTimes(
+                'walking',
+                [10, 20, 30, 40, 50, 60],
+              )
+
+            const drivingTravelTimes =
+              buildTravelTimes(
+                'driving',
+                [
+                  30,
+                  60,
+                  90,
+                  120,
+                  150,
+                  180,
+                ],
+              )
 
             return {
               summary: {
@@ -426,18 +548,36 @@ export const useScheduleStore =
                   '未集計',
 
                 activity:
-                  activities[0]
-                    ?.label ??
+                  activities[0]?.label ??
                   '未集計',
 
                 area:
                   areas[0]?.label ??
-                  '未集計',
+                  '希望なし',
               },
 
               dates,
               activities,
               areas,
+              transportModes,
+              walkingTravelTimes,
+              drivingTravelTimes,
+
+              // 旧ResultViewとの後方互換用。
+              travelTimes: [
+                ...walkingTravelTimes.map(
+                  (item) => ({
+                    ...item,
+                    label: `徒歩 ${item.label}`,
+                  }),
+                ),
+                ...drivingTravelTimes.map(
+                  (item) => ({
+                    ...item,
+                    label: `車 ${item.label}`,
+                  }),
+                ),
+              ],
             }
           },
     },
@@ -648,10 +788,31 @@ export const useScheduleStore =
                       departure:
                         responseRow.departure,
 
+                      departureLocation:
+                        responseRow.departure_lat !== null &&
+                          responseRow.departure_lng !== null
+                          ? {
+                            lat: responseRow.departure_lat,
+                            lng: responseRow.departure_lng,
+                          }
+                          : null,
+
+                      transportMode:
+                        responseRow.transport_mode,
+
                       travelTime:
                         responseRow.travel_time,
 
+                      preferredAreas:
+                        responseRow.preferred_areas?.length
+                          ? responseRow.preferred_areas
+                          : responseRow.preferred_area
+                            ? [responseRow.preferred_area]
+                            : [],
+
+                      // 旧UIとの後方互換用。新実装では preferredAreas を使用。
                       preferredArea:
+                        responseRow.preferred_areas?.[0] ??
                         responseRow.preferred_area ??
                         undefined,
                     }),
@@ -737,12 +898,16 @@ export const useScheduleStore =
 
       async joinSchedule(
         scheduleId: string,
+        memberNameInput?: string,
       ) {
         const currentUserId =
           this.currentUserId
 
         const memberName =
-          this.displayName.trim()
+          (
+            memberNameInput ??
+            this.displayName
+          ).trim()
 
         if (!currentUserId) {
           console.error(
@@ -758,6 +923,12 @@ export const useScheduleStore =
           )
 
           return false
+        }
+
+        if (
+          this.displayName !== memberName
+        ) {
+          this.setDisplayName(memberName)
         }
 
         const {
@@ -842,12 +1013,22 @@ export const useScheduleStore =
               departure:
                 response.departure,
 
+              departure_lat:
+                response.departureLocation?.lat ??
+                null,
+
+              departure_lng:
+                response.departureLocation?.lng ??
+                null,
+
+              transport_mode:
+                response.transportMode,
+
               travel_time:
                 response.travelTime,
 
-              preferred_area:
-                response.preferredArea ??
-                null,
+              preferred_areas:
+                response.preferredAreas,
             },
             {
               onConflict:
