@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 
+const props = withDefaults(
+  defineProps<{
+    scheduleListDisabled?: boolean
+  }>(),
+  {
+    scheduleListDisabled: false,
+  },
+)
+
 const route = useRoute()
 const router = useRouter()
 
@@ -14,6 +23,8 @@ const goHome = () => {
 }
 
 const goScheduleList = () => {
+  if (props.scheduleListDisabled) return
+
   router.push({ name: 'schedule-list' })
 }
 </script>
@@ -79,7 +90,10 @@ const goScheduleList = () => {
       class="bottom-navigation__item"
       :class="{
         'bottom-navigation__item--active': isScheduleActive(),
+        'bottom-navigation__item--disabled': props.scheduleListDisabled,
       }"
+      :disabled="props.scheduleListDisabled"
+      :aria-disabled="props.scheduleListDisabled"
       @click="goScheduleList"
     >
       <svg class="bottom-navigation__icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -178,6 +192,11 @@ const goScheduleList = () => {
     &--active {
       color: $color-primary;
       font-weight: $font-weight-semibold;
+    }
+
+    &--disabled {
+      color: $color-neutral-400;
+      cursor: not-allowed;
     }
 
     &:focus-visible {

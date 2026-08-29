@@ -179,6 +179,15 @@ const isAllAnswered = computed(() => {
         />
       </div>
 
+      <EmptyState
+        v-else-if="
+          scheduleStore.scheduleDataStatus === 'success' && schedule && answeredCount === 0
+        "
+        title="まだ回答がありません"
+        description="みんなの回答が集まると、ここに集計結果が表示されます。"
+        :show-action="false"
+      />
+
       <template v-else-if="schedule && result">
         <header class="result-view__header">
           <h1 class="result-view__title">

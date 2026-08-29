@@ -300,7 +300,9 @@ const joinByInviteCode = async () => {
       </template>
     </main>
 
-    <BottomNavigation />
+    <BottomNavigation
+      :schedule-list-disabled="!hasDisplayName || (isJoining && isInviteRoute)"
+    />
   </div>
 </template>
 
