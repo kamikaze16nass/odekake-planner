@@ -172,7 +172,7 @@ const buttonVariant = computed(() => (props.type === 'all-answered' ? 'success' 
   border-radius: $radius-card;
 
   &--answer-required {
-    background-color: rgba($color-accent-yellow, 0.18);
+    background-color: rgba($color-warning, 0.18);
   }
 
   &--all-answered {
@@ -193,7 +193,7 @@ const buttonVariant = computed(() => (props.type === 'all-answered' ? 'success' 
   }
 
   &--answer-required &__status-icon {
-    color: $color-accent-yellow;
+    color: $color-warning;
   }
 
   &--all-answered &__status-icon {

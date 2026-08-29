@@ -1296,19 +1296,19 @@ const goBack = () => {
 
   &__transport-icon {
     .condition-input__transport-option--walking & {
-      color: #4c9870;
+      color: $color-accent-green-dark;
     }
 
     .condition-input__transport-option--driving & {
-      color: #5a83bf;
+      color: $color-accent-blue-dark;
     }
 
     .condition-input__transport-option--transit & {
-      color: #8a64b1;
+      color: $color-accent-purple-dark;
     }
 
     .condition-input__transport-option--none & {
-      color: #a57d28;
+      color: $color-accent-yellow-dark;
     }
   }
 
@@ -1453,11 +1453,11 @@ const goBack = () => {
     gap: 8px;
 
     .condition-input__travel-message--transit & {
-      color: #8a64b1;
+      color: $color-accent-purple-dark;
     }
 
     .condition-input__travel-message--none & {
-      color: #a57d28;
+      color: $color-accent-yellow-dark;
     }
   }
 
@@ -1491,7 +1491,7 @@ const goBack = () => {
     border: 0;
     border-radius: $radius-button;
     background: $color-primary;
-    color: white;
+    color: $color-neutral-0;
     font: inherit;
     font-weight: $font-weight-semibold;
 
@@ -1520,19 +1520,19 @@ const goBack = () => {
     cursor: pointer;
 
     &--0 {
-      background: #ffe7ef;
+      background: $color-accent-pink-light;
     }
     &--1 {
-      background: #e8f7ef;
+      background: $color-accent-green-light;
     }
     &--2 {
-      background: #e9f2ff;
+      background: $color-accent-blue-light;
     }
     &--3 {
-      background: #f3eaff;
+      background: $color-accent-purple-light;
     }
     &--4 {
-      background: #fff2cf;
+      background: $color-accent-yellow-light;
     }
   }
 }

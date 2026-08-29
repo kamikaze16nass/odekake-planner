@@ -171,7 +171,7 @@ const emit = defineEmits<{
     }
 
     &--unanswered {
-      background-color: rgba($color-accent-yellow, 0.18);
+      background-color: rgba($color-warning, 0.18);
       color: $color-text;
     }
   }

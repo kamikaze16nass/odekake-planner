@@ -105,7 +105,7 @@ withDefaults(
     }
 
     &--error {
-      border-color: #d92d20;
+      border-color: $color-error;
     }
   }
 
@@ -116,7 +116,7 @@ withDefaults(
 
   &__error {
     font-size: $font-size-caption;
-    color: #d92d20;
+    color: $color-error;
   }
 }
 </style>

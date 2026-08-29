@@ -426,7 +426,7 @@ const sortedMembers = computed(() => {
   &__answer-chip {
     padding: 4px 10px;
     border-radius: $radius-chip;
-    background: rgba(255, 255, 255, 0.72);
+    background: rgba($color-neutral-0, 0.72);
     color: $color-text;
     font-size: $font-size-caption;
   }

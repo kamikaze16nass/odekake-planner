@@ -1,31 +1,8 @@
 // ========================================
-// Color
+// Color Primitives
 // ========================================
 
-// Brand
-$color-primary: #20a7a0;
-$color-primary-dark: #167c78;
-$color-primary-light: #ddf5f3;
-
-// Status / Accent
-$color-accent-yellow: #f6c85f;
-$color-accent-blue-dark: #5a83bf;
-$color-accent-yellow-dark: #a57d28;
-$color-accent-pink-dark: #c75d83;
-$color-success: #43c77a;
-
-// Background
-$color-background: #f7fbfa;
-$color-surface: #ffffff;
-
-// Text
-$color-text: #152033;
-
-
-// ========================================
 // Neutral
-// ========================================
-
 $color-neutral-900: #152033;
 $color-neutral-600: #667088;
 $color-neutral-400: #98a2b3;
@@ -33,6 +10,45 @@ $color-neutral-300: #d0d5dd;
 $color-neutral-200: #e4e7ec;
 $color-neutral-100: #f2f4f7;
 $color-neutral-0: #ffffff;
+
+// Brand
+$color-primary: #20a7a0;
+$color-primary-dark: #167c78;
+$color-primary-light: #ddf5f3;
+
+// Accent palette
+$color-accent-pink-light: #ffe5ee;
+$color-accent-pink-dark: #c75d83;
+$color-accent-green-light: #e5f6ec;
+$color-accent-green-dark: #4c9870;
+$color-accent-blue-light: #e7f0ff;
+$color-accent-blue-dark: #5a83bf;
+$color-accent-purple-light: #f2e7ff;
+$color-accent-purple-dark: #8a64b1;
+$color-accent-yellow-light: #fff1cc;
+$color-accent-yellow-dark: #a57d28;
+
+// Shared color primitives
+$color-yellow-500: #f6c85f;
+
+// ========================================
+// Semantic Colors
+// ========================================
+
+// Background / Surface / Text
+$color-background: #f7fbfa;
+$color-surface: $color-neutral-0;
+$color-text: $color-neutral-900;
+
+// Status
+$color-success: #43c77a;
+$color-warning: $color-yellow-500;
+$color-error: #d92d20;
+
+// Data visualization
+$color-chart-blue: #6db7e8;
+$color-chart-purple: #9d7ad1;
+$color-chart-yellow: $color-yellow-500;
 
 
 // ========================================

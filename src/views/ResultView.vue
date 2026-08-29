@@ -460,6 +460,11 @@ const isAllAnswered = computed(() => {
 <style scoped lang="scss">
 @use '@/assets/styles/tokens' as *;
 
+$result-decoration-blue: #eaf6ff;
+$result-decoration-pink: #ffeaf1;
+$result-decoration-gradient-pink: #fff8fb;
+$result-decoration-gradient-blue: #f7fbff;
+
 .result-view {
   display: flex;
   flex-direction: column;
@@ -493,10 +498,15 @@ const isAllAnswered = computed(() => {
     overflow: hidden;
     padding: $spacing-3 $spacing-2;
     margin-top: $spacing-2;
-    border: 1px solid rgba(32, 167, 160, 0.3);
+    border: 1px solid rgba($color-primary, 0.3);
     border-radius: calc($radius-card + 6px);
-    background: linear-gradient(120deg, rgba(221, 245, 243, 0.82), $color-surface 50%, #eaf6ff);
-    box-shadow: 0 6px 18px rgba(21, 32, 51, 0.06);
+    background: linear-gradient(
+      120deg,
+      rgba($color-primary-light, 0.82),
+      $color-surface 50%,
+      $result-decoration-blue
+    );
+    box-shadow: 0 6px 18px rgba($color-neutral-900, 0.06);
 
     &::before,
     &::after {
@@ -511,15 +521,15 @@ const isAllAnswered = computed(() => {
     &::before {
       top: 18px;
       left: 22px;
-      background: rgba(32, 167, 160, 0.24);
-      box-shadow: 18px 28px 0 rgba(90, 131, 191, 0.14);
+      background: rgba($color-primary, 0.24);
+      box-shadow: 18px 28px 0 rgba($color-accent-blue-dark, 0.14);
     }
 
     &::after {
       right: 24px;
       bottom: 20px;
-      background: rgba(90, 131, 191, 0.2);
-      box-shadow: -16px -30px 0 rgba(246, 200, 95, 0.2);
+      background: rgba($color-accent-blue-dark, 0.2);
+      box-shadow: -16px -30px 0 rgba($color-yellow-500, 0.2);
     }
   }
 
@@ -544,15 +554,15 @@ const isAllAnswered = computed(() => {
     min-height: 34px;
     padding: 6px 14px;
     margin: $spacing-2 0 0;
-    border: 1px solid rgba(152, 162, 179, 0.24);
+    border: 1px solid rgba($color-neutral-400, 0.24);
     border-radius: $radius-chip;
-    background: rgba(255, 255, 255, 0.8);
+    background: rgba($color-neutral-0, 0.8);
     color: $color-neutral-600;
     font-size: $font-size-caption;
     font-weight: $font-weight-semibold;
 
     &--complete {
-      border-color: rgba(32, 167, 160, 0.24);
+      border-color: rgba($color-primary, 0.24);
       color: $color-primary-dark;
     }
   }
@@ -572,8 +582,8 @@ const isAllAnswered = computed(() => {
     margin-left: auto;
     border: 1px solid $color-neutral-200;
     border-radius: calc($radius-card + 8px);
-    background: linear-gradient(145deg, $color-surface, rgba(247, 251, 250, 0.86));
-    box-shadow: 0 8px 22px rgba(21, 32, 51, 0.05);
+    background: linear-gradient(145deg, $color-surface, rgba($color-background, 0.86));
+    box-shadow: 0 8px 22px rgba($color-neutral-900, 0.05);
 
     > h2 {
       display: flex;
@@ -696,7 +706,7 @@ const isAllAnswered = computed(() => {
 
     &--date {
       border: 1px solid $color-accent-blue-dark;
-      background: #eaf6ff;
+      background: $result-decoration-blue;
 
       .result-view__summary-description {
         color: $color-accent-blue-dark;
@@ -714,7 +724,7 @@ const isAllAnswered = computed(() => {
 
     &--area {
       border: 1px solid $color-accent-pink-dark;
-      background: #ffeaf1;
+      background: $result-decoration-pink;
 
       .result-view__summary-description {
         color: $color-accent-pink-dark;
@@ -756,7 +766,7 @@ const isAllAnswered = computed(() => {
     justify-self: end;
     padding: 3px 8px;
     border-radius: $radius-chip;
-    background: rgba(255, 255, 255, 0.75);
+    background: rgba($color-neutral-0, 0.75);
     color: $color-text !important;
     font-weight: $font-weight-semibold;
   }
@@ -898,7 +908,11 @@ const isAllAnswered = computed(() => {
       padding: $spacing-2;
       border: 0 !important;
       border-radius: $radius-card;
-      background: linear-gradient(135deg, #fff8fb, #f7fbff);
+      background: linear-gradient(
+        135deg,
+        $result-decoration-gradient-pink,
+        $result-decoration-gradient-blue
+      );
     }
   }
 
@@ -942,7 +956,7 @@ const isAllAnswered = computed(() => {
     }
 
     &--transport {
-      color: #8a64b1;
+      color: $color-accent-purple-dark;
     }
 
     &--walking,
@@ -991,7 +1005,7 @@ const isAllAnswered = computed(() => {
 
     &--vote {
       height: 10px;
-      background: rgba(255, 255, 255, 0.75);
+      background: rgba($color-neutral-0, 0.75);
     }
   }
 
@@ -1001,7 +1015,7 @@ const isAllAnswered = computed(() => {
     background: $color-primary;
 
     &--date {
-      background: #6db7e8;
+      background: $color-chart-blue;
     }
 
     &--activity {
@@ -1009,12 +1023,12 @@ const isAllAnswered = computed(() => {
     }
 
     &--transport {
-      background: #9d7ad1;
+      background: $color-chart-purple;
     }
 
     &--walking,
     &--driving {
-      background: $color-accent-yellow;
+      background: $color-chart-yellow;
     }
 
     &--vote {
@@ -1033,28 +1047,28 @@ const isAllAnswered = computed(() => {
     border-radius: $radius-input;
 
     &--0 {
-      background: #ffe5ee;
-      color: #c75d83;
+      background: $color-accent-pink-light;
+      color: $color-accent-pink-dark;
     }
 
     &--1 {
-      background: #e5f6ec;
-      color: #4c9870;
+      background: $color-accent-green-light;
+      color: $color-accent-green-dark;
     }
 
     &--2 {
-      background: #e7f0ff;
-      color: #5a83bf;
+      background: $color-accent-blue-light;
+      color: $color-accent-blue-dark;
     }
 
     &--3 {
-      background: #f2e7ff;
-      color: #8a64b1;
+      background: $color-accent-purple-light;
+      color: $color-accent-purple-dark;
     }
 
     &--4 {
-      background: #fff1cc;
-      color: #a57d28;
+      background: $color-accent-yellow-light;
+      color: $color-accent-yellow-dark;
     }
   }
 
@@ -1087,7 +1101,7 @@ const isAllAnswered = computed(() => {
     margin: 0;
     padding: $spacing-2;
     border-radius: $radius-input;
-    background: rgba(255, 255, 255, 0.8);
+    background: rgba($color-neutral-0, 0.8);
     color: $color-neutral-600;
     font-size: $font-size-caption;
   }
