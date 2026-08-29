@@ -5,6 +5,8 @@ import { useRoute, useRouter } from 'vue-router'
 import BaseButton from '@/components/common/BaseButton.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import BottomNavigation from '@/components/common/BottomNavigation.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
 import { useScheduleStore } from '@/stores/schedule'
 
 const route = useRoute()
@@ -16,6 +18,22 @@ const schedule = computed(() => scheduleStore.getScheduleById(scheduleId.value))
 const result = computed(() => scheduleStore.getResultByScheduleId(scheduleId.value))
 
 const answeredCount = computed(() => schedule.value?.responses.length ?? 0)
+
+const isInitialLoading = computed(
+  () =>
+    scheduleStore.scheduleDataStatus === 'idle' ||
+    (scheduleStore.scheduleDataStatus === 'loading' && !schedule.value),
+)
+
+const hasInitialError = computed(
+  () => scheduleStore.scheduleDataStatus === 'error' && !schedule.value,
+)
+
+const retryScheduleData = async () => {
+  const authSuccess = await scheduleStore.initializeAuth()
+  if (!authSuccess) return
+  await scheduleStore.fetchScheduleData()
+}
 
 function takeGroupsUntilTarget<T extends { count: number }>(items: T[], targetCount = 3): T[] {
   if (items.length === 0 || targetCount <= 0) return []
@@ -150,7 +168,18 @@ const isAllAnswered = computed(() => {
 <template>
   <div class="result-view">
     <main class="page page--with-bottom-nav result-view__content">
-      <template v-if="schedule && result">
+      <LoadingState v-if="isInitialLoading" label="集計結果を読み込んでいます" />
+
+      <div v-else-if="hasInitialError" role="alert">
+        <EmptyState
+          title="集計結果を読み込めませんでした"
+          :description="scheduleStore.scheduleDataError ?? 'もう一度お試しください。'"
+          action-label="再試行"
+          @action="retryScheduleData"
+        />
+      </div>
+
+      <template v-else-if="schedule && result">
         <header class="result-view__header">
           <h1 class="result-view__title">
             <AppIcon name="sparkles" :size="20" />
@@ -450,7 +479,9 @@ const isAllAnswered = computed(() => {
         </BaseButton>
       </template>
 
-      <p v-else>集計結果が見つかりません。</p>
+      <p v-else-if="scheduleStore.scheduleDataStatus === 'success'">
+        集計結果が見つかりません。
+      </p>
     </main>
 
     <BottomNavigation />

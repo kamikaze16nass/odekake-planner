@@ -9,6 +9,7 @@ import BaseInput from '@/components/common/BaseInput.vue'
 import BottomNavigation from '@/components/common/BottomNavigation.vue'
 import NoticeCard from '@/components/schedule/NoticeCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
 import { useScheduleStore } from '@/stores/schedule'
 
 const router = useRouter()
@@ -80,6 +81,22 @@ const saveDisplayName = async () => {
 const unansweredSchedule = computed(() => scheduleStore.unansweredSchedules[0])
 
 const allAnsweredSchedule = computed(() => scheduleStore.allAnsweredSchedules[0])
+
+const isInitialLoading = computed(
+  () =>
+    scheduleStore.scheduleDataStatus === 'idle' ||
+    (scheduleStore.scheduleDataStatus === 'loading' && scheduleStore.schedules.length === 0),
+)
+
+const hasInitialError = computed(
+  () => scheduleStore.scheduleDataStatus === 'error' && scheduleStore.schedules.length === 0,
+)
+
+const retryScheduleData = async () => {
+  const authSuccess = await scheduleStore.initializeAuth()
+  if (!authSuccess) return
+  await scheduleStore.fetchScheduleData()
+}
 
 const formatPeriod = (startDate: string, endDate: string) => {
   const format = (dateString: string) => {
@@ -171,6 +188,18 @@ const joinByInviteCode = async () => {
 
       <!-- 通常ホーム -->
       <template v-else>
+        <LoadingState v-if="isInitialLoading" label="予定を読み込んでいます" />
+
+        <div v-else-if="hasInitialError" role="alert">
+          <EmptyState
+            title="予定を読み込めませんでした"
+            :description="scheduleStore.scheduleDataError ?? 'もう一度お試しください。'"
+            action-label="再試行"
+            @action="retryScheduleData"
+          />
+        </div>
+
+        <template v-else>
         <!-- お知らせ -->
         <section class="home-view__section">
           <div class="home-view__notice-list">
@@ -196,7 +225,11 @@ const joinByInviteCode = async () => {
             />
 
             <EmptyState
-              v-if="!unansweredSchedule && !allAnsweredSchedule"
+              v-if="
+                scheduleStore.scheduleDataStatus === 'success' &&
+                !unansweredSchedule &&
+                !allAnsweredSchedule
+              "
               title="今やることはありません"
               description="次のおでかけ予定を、みんなで考えてみませんか？"
               @action="goCreateSchedule"
@@ -223,6 +256,7 @@ const joinByInviteCode = async () => {
             </BaseButton>
           </form>
         </section>
+        </template>
       </template>
     </main>
 

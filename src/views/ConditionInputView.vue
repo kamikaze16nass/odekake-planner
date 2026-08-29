@@ -6,6 +6,8 @@ import BaseButton from '@/components/common/BaseButton.vue'
 import BaseChip from '@/components/common/BaseChip.vue'
 import BackButton from '@/components/common/BackButton.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
 import MapPicker from '@/components/common/MapPicker.vue'
 import { forwardGeocode, reverseGeocode } from '@/services/geoapify'
 import { useScheduleStore } from '@/stores/schedule'
@@ -17,6 +19,22 @@ const scheduleStore = useScheduleStore()
 const scheduleId = computed(() => String(route.params.id))
 const schedule = computed(() => scheduleStore.getScheduleById(scheduleId.value))
 const existingResponse = computed(() => scheduleStore.getCurrentUserResponse(scheduleId.value))
+
+const isInitialLoading = computed(
+  () =>
+    scheduleStore.scheduleDataStatus === 'idle' ||
+    (scheduleStore.scheduleDataStatus === 'loading' && !schedule.value),
+)
+
+const hasInitialError = computed(
+  () => scheduleStore.scheduleDataStatus === 'error' && !schedule.value,
+)
+
+const retryScheduleData = async () => {
+  const authSuccess = await scheduleStore.initializeAuth()
+  if (!authSuccess) return
+  await scheduleStore.fetchScheduleData()
+}
 
 const activities = [
   'ごはん',
@@ -64,6 +82,8 @@ const preferredAreaInput = ref('')
 const preferredAreas = ref<string[]>([])
 const preferredAreaError = ref('')
 const preferredAreaLimit = 5
+const isSubmitting = ref(false)
+const submitError = ref('')
 
 const needsDeparture = computed(
   () => travelOption.value === 'walking' || travelOption.value === 'driving',
@@ -529,26 +549,38 @@ const canSubmit = computed(() => {
 })
 
 const submitAnswer = async () => {
-  if (!canSubmit.value) return
+  if (!canSubmit.value || isSubmitting.value) return
 
-  const saved = await scheduleStore.submitResponse(scheduleId.value, {
-    availableDates: selectedDates.value,
-    activities: selectedActivities.value,
-    departure: needsDeparture.value ? departure.value.trim() : '',
-    departureLocation: needsDeparture.value ? departureLocation.value : null,
-    transportMode: transportMode.value,
-    travelTime: needsDeparture.value ? travelTime.value : null,
-    preferredAreas: [...preferredAreas.value],
-  })
+  isSubmitting.value = true
+  submitError.value = ''
 
-  if (!saved) return
+  try {
+    const saved = await scheduleStore.submitResponse(scheduleId.value, {
+      availableDates: selectedDates.value,
+      activities: selectedActivities.value,
+      departure: needsDeparture.value ? departure.value.trim() : '',
+      departureLocation: needsDeparture.value ? departureLocation.value : null,
+      transportMode: transportMode.value,
+      travelTime: needsDeparture.value ? travelTime.value : null,
+      preferredAreas: [...preferredAreas.value],
+    })
 
-  router.push({
-    name: 'schedule-detail',
-    params: {
-      id: scheduleId.value,
-    },
-  })
+    if (!saved) {
+      submitError.value =
+        scheduleStore.scheduleDataError ??
+        '回答を保存できませんでした。時間をおいてもう一度お試しください。'
+      return
+    }
+
+    await router.push({
+      name: 'schedule-detail',
+      params: {
+        id: scheduleId.value,
+      },
+    })
+  } finally {
+    isSubmitting.value = false
+  }
 }
 
 const goBack = () => {
@@ -557,7 +589,18 @@ const goBack = () => {
 </script>
 <template>
   <main class="page condition-input">
-    <template v-if="schedule">
+    <LoadingState v-if="isInitialLoading" label="予定を読み込んでいます" />
+
+    <div v-else-if="hasInitialError" role="alert">
+      <EmptyState
+        title="予定を読み込めませんでした"
+        :description="scheduleStore.scheduleDataError ?? 'もう一度お試しください。'"
+        action-label="再試行"
+        @action="retryScheduleData"
+      />
+    </div>
+
+    <template v-else-if="schedule">
       <header class="condition-input__header">
         <BackButton @click="goBack" />
 
@@ -867,10 +910,22 @@ const goBack = () => {
         </section>
         <!-- 回答送信 -->
         <div class="condition-input__submit">
-          <BaseButton type="submit" :disabled="!canSubmit"> 回答を送る </BaseButton>
+          <p
+            v-if="submitError"
+            class="condition-input__status condition-input__status--error"
+            role="alert"
+          >
+            {{ submitError }}
+          </p>
+
+          <BaseButton type="submit" :disabled="!canSubmit || isSubmitting">
+            {{ isSubmitting ? '回答を保存中...' : '回答を送る' }}
+          </BaseButton>
         </div>
       </form>
     </template>
+
+    <p v-else-if="scheduleStore.scheduleDataStatus === 'success'">予定が見つかりません。</p>
   </main>
 </template>
 

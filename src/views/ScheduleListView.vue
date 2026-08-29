@@ -5,12 +5,29 @@ import { useRouter } from 'vue-router'
 import BottomNavigation from '@/components/common/BottomNavigation.vue'
 import ScheduleCard from '@/components/schedule/ScheduleCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
 import { useScheduleStore } from '@/stores/schedule'
 
 const router = useRouter()
 const scheduleStore = useScheduleStore()
 
 const schedules = computed(() => scheduleStore.activeSchedules)
+
+const isInitialLoading = computed(
+  () =>
+    scheduleStore.scheduleDataStatus === 'idle' ||
+    (scheduleStore.scheduleDataStatus === 'loading' && scheduleStore.schedules.length === 0),
+)
+
+const hasInitialError = computed(
+  () => scheduleStore.scheduleDataStatus === 'error' && scheduleStore.schedules.length === 0,
+)
+
+const retryScheduleData = async () => {
+  const authSuccess = await scheduleStore.initializeAuth()
+  if (!authSuccess) return
+  await scheduleStore.fetchScheduleData()
+}
 
 const formatPeriod = (startDate: string, endDate: string) => {
   const format = (dateString: string) => {
@@ -59,7 +76,18 @@ const goCreateSchedule = () => {
         <p class="schedule-list-view__description">参加中の予定を確認できます</p>
       </header>
 
-      <section class="schedule-list-view__list">
+      <LoadingState v-if="isInitialLoading" label="予定を読み込んでいます" />
+
+      <div v-else-if="hasInitialError" role="alert">
+        <EmptyState
+          title="予定を読み込めませんでした"
+          :description="scheduleStore.scheduleDataError ?? 'もう一度お試しください。'"
+          action-label="再試行"
+          @action="retryScheduleData"
+        />
+      </div>
+
+      <section v-else class="schedule-list-view__list">
         <template v-if="schedules.length > 0">
           <ScheduleCard
             v-for="schedule in schedules"
@@ -78,7 +106,7 @@ const goCreateSchedule = () => {
         </template>
 
         <EmptyState
-          v-else
+          v-else-if="scheduleStore.scheduleDataStatus === 'success'"
           title="まだ予定はありません"
           description="まずは新しい予定を作って、みんなを誘ってみましょう。"
           @action="goCreateSchedule"

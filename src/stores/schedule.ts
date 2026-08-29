@@ -10,12 +10,16 @@ import type {
   ScheduleResult,
 } from '@/types/schedule'
 
+type AsyncStatus = 'idle' | 'loading' | 'success' | 'error'
+
 type ScheduleState = {
   currentUserId: string | null
   displayName: string
   schedules: Schedule[]
   authInitialized: boolean
   authError: string | null
+  scheduleDataStatus: AsyncStatus
+  scheduleDataError: string | null
 }
 
 
@@ -81,6 +85,8 @@ export const useScheduleStore =
       schedules: [],
       authInitialized: false,
       authError: null,
+      scheduleDataStatus: 'idle',
+      scheduleDataError: null,
     }),
 
     getters: {
@@ -608,7 +614,7 @@ export const useScheduleStore =
       // ========================================
 
       async initializeAuth() {
-        if (this.authInitialized) {
+        if (this.authInitialized && this.currentUserId) {
           return true
         }
 
@@ -621,6 +627,8 @@ export const useScheduleStore =
           if (!user) {
             this.authError =
               'ユーザー認証に失敗しました。'
+            this.scheduleDataStatus = 'error'
+            this.scheduleDataError = this.authError
 
             this.authInitialized =
               true
@@ -647,6 +655,8 @@ export const useScheduleStore =
 
           this.authError =
             'ユーザー認証に失敗しました。'
+          this.scheduleDataStatus = 'error'
+          this.scheduleDataError = this.authError
 
           this.authInitialized = true
 
@@ -672,7 +682,7 @@ export const useScheduleStore =
             error,
           )
 
-          return []
+          throw error
         }
 
 
@@ -697,7 +707,7 @@ export const useScheduleStore =
             error,
           )
 
-          return []
+          throw error
         }
 
         return data as MemberRow[]
@@ -721,7 +731,7 @@ export const useScheduleStore =
             error,
           )
 
-          return []
+          throw error
         }
 
 
@@ -734,18 +744,22 @@ export const useScheduleStore =
       // ========================================
 
       async fetchScheduleData() {
-        const [
-          scheduleRows,
-          memberRows,
-          responseRows,
-        ] = await Promise.all([
-          this.fetchSchedulesFromSupabase(),
-          this.fetchMembersFromSupabase(),
-          this.fetchResponsesFromSupabase(),
-        ])
+        this.scheduleDataStatus = 'loading'
+        this.scheduleDataError = null
 
-        const schedules: Schedule[] =
-          scheduleRows.map(
+        try {
+          const [
+            scheduleRows,
+            memberRows,
+            responseRows,
+          ] = await Promise.all([
+            this.fetchSchedulesFromSupabase(),
+            this.fetchMembersFromSupabase(),
+            this.fetchResponsesFromSupabase(),
+          ])
+
+          const schedules: Schedule[] =
+            scheduleRows.map(
             (scheduleRow) => {
               const members =
                 memberRows
@@ -847,12 +861,24 @@ export const useScheduleStore =
 
               return schedule
             },
+            )
+
+          this.schedules = schedules
+          this.scheduleDataStatus = 'success'
+
+          return true
+        } catch (error) {
+          console.error(
+            '予定データの取得に失敗しました。',
+            error,
           )
 
+          this.scheduleDataStatus = 'error'
+          this.scheduleDataError =
+            '予定を読み込めませんでした。もう一度お試しください。'
 
-        this.schedules = schedules
-
-        return schedules
+          return false
+        }
       },
 
       // ========================================
@@ -899,6 +925,7 @@ export const useScheduleStore =
       async joinSchedule(
         scheduleId: string,
         memberNameInput?: string,
+        options: { refresh?: boolean } = {},
       ) {
         const currentUserId =
           this.currentUserId
@@ -956,7 +983,9 @@ export const useScheduleStore =
           return false
         }
 
-        await this.fetchScheduleData()
+        if (options.refresh !== false) {
+          return this.fetchScheduleData()
+        }
 
         return true
       },
@@ -985,7 +1014,11 @@ export const useScheduleStore =
 
         // まず、この予定の参加者になっていることを保証
         const joined =
-          await this.joinSchedule(scheduleId)
+          await this.joinSchedule(
+            scheduleId,
+            undefined,
+            { refresh: false },
+          )
 
         if (!joined) {
           console.error(
@@ -1046,7 +1079,25 @@ export const useScheduleStore =
         }
 
         // DBに保存された最新状態を画面へ反映
-        await this.fetchScheduleData()
+        const refreshed =
+          await this.fetchScheduleData()
+
+        if (!refreshed) {
+          return false
+        }
+
+        const savedResponse =
+          this.getCurrentUserResponse(
+            scheduleId,
+          )
+
+        if (!savedResponse) {
+          console.error(
+            '保存した回答を予定データへ反映できませんでした。',
+          )
+
+          return false
+        }
 
         return true
       },

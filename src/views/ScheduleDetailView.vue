@@ -5,6 +5,8 @@ import { useRoute, useRouter } from 'vue-router'
 import BaseButton from '@/components/common/BaseButton.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import BottomNavigation from '@/components/common/BottomNavigation.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import LoadingState from '@/components/common/LoadingState.vue'
 import ResponseStatus from '@/components/schedule/ResponseStatus.vue'
 import { useScheduleStore } from '@/stores/schedule'
 
@@ -17,6 +19,22 @@ const scheduleId = computed(() => String(route.params.id))
 const schedule = computed(() => scheduleStore.getScheduleById(scheduleId.value))
 
 const currentResponse = computed(() => scheduleStore.getCurrentUserResponse(scheduleId.value))
+
+const isInitialLoading = computed(
+  () =>
+    scheduleStore.scheduleDataStatus === 'idle' ||
+    (scheduleStore.scheduleDataStatus === 'loading' && !schedule.value),
+)
+
+const hasInitialError = computed(
+  () => scheduleStore.scheduleDataStatus === 'error' && !schedule.value,
+)
+
+const retryScheduleData = async () => {
+  const authSuccess = await scheduleStore.initializeAuth()
+  if (!authSuccess) return
+  await scheduleStore.fetchScheduleData()
+}
 
 const formatDate = (value: string) => {
   const [year, month, day] = value.split('-').map(Number)
@@ -124,7 +142,18 @@ const sortedMembers = computed(() => {
 <template>
   <div class="schedule-detail">
     <main class="page page--with-bottom-nav schedule-detail__content">
-      <template v-if="schedule">
+      <LoadingState v-if="isInitialLoading" label="予定を読み込んでいます" />
+
+      <div v-else-if="hasInitialError" role="alert">
+        <EmptyState
+          title="予定を読み込めませんでした"
+          :description="scheduleStore.scheduleDataError ?? 'もう一度お試しください。'"
+          action-label="再試行"
+          @action="retryScheduleData"
+        />
+      </div>
+
+      <template v-else-if="schedule">
         <!-- 予定情報 -->
         <header class="schedule-detail__header">
           <h1 class="schedule-detail__title">
@@ -257,7 +286,7 @@ const sortedMembers = computed(() => {
         </section>
       </template>
 
-      <p v-else>予定が見つかりません。</p>
+      <p v-else-if="scheduleStore.scheduleDataStatus === 'success'">予定が見つかりません。</p>
     </main>
 
     <BottomNavigation />
