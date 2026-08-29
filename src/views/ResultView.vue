@@ -190,15 +190,32 @@ const isAllAnswered = computed(() => {
 
       <template v-else-if="schedule && result">
         <header class="result-view__header">
-          <h1 class="result-view__title">
-            <AppIcon name="sparkles" :size="20" />
-            集計結果
-            <AppIcon name="sparkles" :size="20" />
-          </h1>
+          <div class="result-view__overlap-graphic" aria-hidden="true">
+            <span class="result-view__overlap-shape result-view__overlap-shape--blue" />
+            <span class="result-view__overlap-shape result-view__overlap-shape--green" />
+            <span class="result-view__overlap-shape result-view__overlap-shape--pink" />
+            <span class="result-view__overlap-center" />
+          </div>
 
-          <div class="result-view__event-card">
-            <p class="result-view__schedule-name">
+          <div class="result-view__hero-content">
+            <p class="result-view__title">
+              <AppIcon name="chart-bar" :size="20" />
+              <span>集計結果</span>
+              <AppIcon name="chart-bar" :size="20" />
+            </p>
+
+            <h1 class="result-view__schedule-name">
               {{ schedule.title }}
+            </h1>
+
+            <span class="result-view__color-line" aria-hidden="true">
+              <span class="result-view__color-line-part result-view__color-line-part--blue" />
+              <span class="result-view__color-line-part result-view__color-line-part--green" />
+              <span class="result-view__color-line-part result-view__color-line-part--pink" />
+            </span>
+
+            <p class="result-view__hero-copy">
+              {{ answeredCount }}人の回答から、いまの希望をまとめました
             </p>
 
             <p
@@ -222,9 +239,7 @@ const isAllAnswered = computed(() => {
 
         <section class="result-view__summary">
           <h2>
-            <AppIcon class="result-view__summary-heading-icon" name="sparkles" :size="18" />
             <span>いま一番まとまっている希望</span>
-            <AppIcon class="result-view__summary-heading-icon" name="sparkles" :size="18" />
           </h2>
 
           <div class="result-view__summary-story">
@@ -516,10 +531,30 @@ $result-decoration-gradient-blue: #f7fbff;
   }
 
   &__header {
+    display: grid;
+    grid-template-columns: 148px minmax(0, 1fr);
+    align-items: center;
+    gap: $spacing-3;
     width: 100%;
-    max-width: 680px;
+    max-width: 860px;
+    min-width: 0;
+    padding: $spacing-4;
     margin: 0 auto;
+    overflow: hidden;
+    border: 1px solid rgba($color-primary, 0.24);
+    border-radius: calc($radius-card + 8px);
+    background: linear-gradient(
+      120deg,
+      rgba($color-primary-light, 0.7),
+      $color-surface 48%,
+      rgba($color-accent-blue-light, 0.72)
+    );
+    box-shadow: 0 8px 24px rgba($color-neutral-900, 0.06);
     text-align: center;
+  }
+
+  &__hero-content {
+    min-width: 0;
   }
 
   &__title {
@@ -528,66 +563,101 @@ $result-decoration-gradient-blue: #f7fbff;
     justify-content: center;
     gap: $spacing-1;
     margin: 0;
-    color: $color-primary;
-    font-size: $font-size-page-title;
+    color: $color-primary-dark;
+    font-size: $font-size-card-title;
     font-weight: $font-weight-bold;
   }
 
-  &__event-card {
+  &__overlap-graphic {
     position: relative;
-    overflow: hidden;
-    padding: $spacing-3 $spacing-2;
-    margin-top: $spacing-2;
-    border: 1px solid rgba($color-primary, 0.3);
-    border-radius: calc($radius-card + 6px);
-    background: linear-gradient(
-      120deg,
-      rgba($color-primary-light, 0.82),
-      $color-surface 50%,
-      $result-decoration-blue
-    );
-    box-shadow: 0 6px 18px rgba($color-neutral-900, 0.06);
+    width: 148px;
+    height: 138px;
+    margin: 0 auto;
+  }
 
-    &::before,
-    &::after {
-      position: absolute;
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      content: '';
-      pointer-events: none;
+  &__overlap-shape {
+    position: absolute;
+    width: 84px;
+    height: 92px;
+    border-radius: calc($radius-card + 2px);
+
+    &--blue {
+      top: 4px;
+      left: 47px;
+      background: rgba($color-accent-blue-dark, 0.35);
+      transform: rotate(7deg);
     }
 
-    &::before {
-      top: 18px;
-      left: 22px;
-      background: rgba($color-primary, 0.24);
-      box-shadow: 18px 28px 0 rgba($color-accent-blue-dark, 0.14);
+    &--green {
+      top: 38px;
+      left: 8px;
+      background: rgba($color-primary, 0.3);
+      transform: rotate(5deg);
     }
 
-    &::after {
-      right: 24px;
-      bottom: 20px;
-      background: rgba($color-accent-blue-dark, 0.2);
-      box-shadow: -16px -30px 0 rgba($color-yellow-500, 0.2);
+    &--pink {
+      top: 50px;
+      left: 65px;
+      background: rgba($color-accent-pink-dark, 0.26);
+      transform: rotate(7deg);
     }
+  }
+
+  &__overlap-center {
+    position: absolute;
+    top: 48px;
+    left: 56px;
+    width: 52px;
+    height: 60px;
+    border: 4px solid $color-neutral-0;
+    border-radius: $radius-input;
+    transform: rotate(5deg);
   }
 
   &__schedule-name {
-    position: relative;
-    z-index: 1;
     max-width: 560px;
-    margin: 0 auto;
+    margin: $spacing-2 auto 0;
     color: $color-text;
-    font-size: clamp(26px, 6vw, 38px);
+    font-size: clamp(32px, 6vw, 44px);
     font-weight: $font-weight-bold;
-    line-height: 1.3;
+    line-height: 1.25;
     overflow-wrap: anywhere;
   }
 
+  &__color-line {
+    display: flex;
+    width: min(100%, 420px);
+    height: 5px;
+    margin: $spacing-2 auto 0;
+    overflow: hidden;
+    border-radius: $radius-chip;
+  }
+
+  &__color-line-part {
+    flex: 1;
+
+    &--blue {
+      background: $color-chart-blue;
+    }
+
+    &--green {
+      background: $color-primary;
+    }
+
+    &--pink {
+      background: $color-accent-pink-dark;
+    }
+  }
+
+  &__hero-copy {
+    margin: $spacing-2 0 0;
+    color: $color-text;
+    font-size: $font-size-body;
+    font-weight: $font-weight-semibold;
+    line-height: 1.6;
+  }
+
   &__answered-count {
-    position: relative;
-    z-index: 1;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -616,17 +686,14 @@ $result-decoration-gradient-blue: #f7fbff;
   &__summary {
     width: 100%;
     max-width: 760px;
-    padding: $spacing-3;
-    margin-top: $spacing-4;
+    padding: $spacing-3 0 0;
+    margin-top: $spacing-3;
     margin-right: auto;
     margin-left: auto;
-    border: 1px solid $color-neutral-200;
-    border-radius: calc($radius-card + 8px);
-    background: linear-gradient(145deg, $color-surface, rgba($color-background, 0.86));
-    box-shadow: 0 8px 22px rgba($color-neutral-900, 0.05);
 
     > h2 {
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(28px, 72px) minmax(0, auto) minmax(28px, 72px);
       align-items: center;
       justify-content: center;
       gap: 10px;
@@ -634,14 +701,20 @@ $result-decoration-gradient-blue: #f7fbff;
       color: $color-text;
       font-size: $font-size-section-title;
       text-align: center;
-    }
-  }
 
-  &__summary-heading-icon {
-    color: $color-primary;
-
-    &:last-child {
-      color: $color-accent-pink-dark;
+      &::before,
+      &::after {
+        width: 100%;
+        height: 3px;
+        border-radius: $radius-chip;
+        background: linear-gradient(
+          90deg,
+          $color-chart-blue 0 33%,
+          $color-primary 33% 66%,
+          $color-accent-pink-dark 66% 100%
+        );
+        content: '';
+      }
     }
   }
 
@@ -839,36 +912,45 @@ $result-decoration-gradient-blue: #f7fbff;
       padding-top: $spacing-2;
     }
 
-    &__title {
-      font-size: 21px;
+    &__header {
+      grid-template-columns: minmax(0, 1fr);
+      gap: $spacing-1;
+      padding: $spacing-3 $spacing-2;
     }
 
-    &__event-card {
-      padding: 20px 14px;
-      margin-top: 12px;
+    &__overlap-graphic {
+      width: 126px;
+      height: 108px;
+      transform: scale(0.84);
+      transform-origin: center top;
+    }
+
+    &__title {
+      font-size: 18px;
     }
 
     &__schedule-name {
-      font-size: clamp(24px, 8vw, 30px);
+      margin-top: 10px;
+      font-size: clamp(28px, 9vw, 36px);
     }
 
-    &__answered-count {
-      margin-top: 12px;
+    &__color-line {
+      margin-top: 14px;
+    }
+
+    &__hero-copy {
+      margin-top: 14px;
+      font-size: $font-size-caption;
     }
 
     &__summary {
-      padding: $spacing-2 10px;
+      padding: $spacing-2 0 0;
       margin-top: $spacing-3;
 
       > h2 {
         gap: 7px;
         font-size: 17px;
       }
-    }
-
-    &__summary-heading-icon {
-      width: 16px;
-      height: 16px;
     }
 
     &__summary-story {
