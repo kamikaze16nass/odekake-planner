@@ -11,6 +11,7 @@ const router = useRouter()
 const scheduleStore = useScheduleStore()
 
 const copied = ref(false)
+const operationError = ref('')
 
 const scheduleId = computed(() => String(route.params.id))
 
@@ -36,6 +37,8 @@ ${inviteUrl.value}
 })
 
 const copyText = async (text: string) => {
+  operationError.value = ''
+
   try {
     await navigator.clipboard.writeText(text)
 
@@ -44,19 +47,32 @@ const copyText = async (text: string) => {
     window.setTimeout(() => {
       copied.value = false
     }, 2000)
+    return true
   } catch {
     copied.value = false
+    operationError.value = 'コピーできませんでした。もう一度お試しください。'
+    return false
   }
 }
 
 const shareInvite = async () => {
   if (!schedule.value) return
 
+  operationError.value = ''
+
   if (navigator.share) {
-    await navigator.share({
-      title: schedule.value.title,
-      text: inviteMessage.value,
-    })
+    try {
+      await navigator.share({
+        title: schedule.value.title,
+        text: inviteMessage.value,
+      })
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return
+      }
+
+      operationError.value = '共有できませんでした。もう一度お試しください。'
+    }
 
     return
   }
@@ -213,6 +229,10 @@ const goDetail = () => {
       </section>
 
       <div v-if="copied" class="invite-view__toast" role="status">コピーしました</div>
+
+      <p v-if="operationError" class="invite-view__error" role="alert">
+        {{ operationError }}
+      </p>
     </template>
 
     <p v-else>予定が見つかりません。</p>
@@ -424,6 +444,13 @@ const goDetail = () => {
     color: $color-neutral-0;
 
     font-size: $font-size-caption;
+  }
+
+  &__error {
+    margin: $spacing-2 0 0;
+    color: $color-error;
+    font-size: $font-size-caption;
+    text-align: center;
   }
 }
 </style>

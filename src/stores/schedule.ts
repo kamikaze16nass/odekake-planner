@@ -887,6 +887,7 @@ export const useScheduleStore =
 
       async findScheduleByInviteCode(
         inviteCode: string,
+        options: { throwOnError?: boolean } = {},
       ) {
         const normalizedCode =
           inviteCode.trim().toUpperCase()
@@ -907,6 +908,10 @@ export const useScheduleStore =
             '招待コードから予定を取得できませんでした。',
             error,
           )
+
+          if (options.throwOnError) {
+            throw error
+          }
 
           return null
         }

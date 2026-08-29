@@ -19,12 +19,81 @@ const scheduleStore = useScheduleStore()
 const inviteCode = ref('')
 
 const displayNameInput = ref('')
+const isJoining = ref(false)
+const inviteActionError = ref('')
 
 const hasDisplayName = computed(() => {
   return scheduleStore.hasDisplayName
 })
 
+const isInviteRoute = computed(() => route.name === 'join')
+
+const joinFromCode = async (code: string, replaceRoute = false) => {
+  if (isJoining.value) return
+
+  isJoining.value = true
+  inviteActionError.value = ''
+
+  try {
+    const schedule = await scheduleStore.findScheduleByInviteCode(code, {
+      throwOnError: true,
+    })
+
+    if (!schedule) {
+      inviteActionError.value = '招待コードに一致する予定が見つかりませんでした。'
+
+      if (replaceRoute) {
+        await router.replace({
+          name: 'home',
+          query: { inviteError: 'not-found' },
+        })
+      }
+
+      return
+    }
+
+    const joined = await scheduleStore.joinSchedule(schedule.id)
+
+    if (!joined) {
+      inviteActionError.value =
+        scheduleStore.scheduleDataError ??
+        '予定に参加できませんでした。もう一度お試しください。'
+
+      if (replaceRoute) {
+        await router.replace({
+          name: 'home',
+          query: { inviteError: 'join-failed' },
+        })
+      }
+
+      return
+    }
+
+    const destination = {
+      name: 'condition-input' as const,
+      params: { id: schedule.id },
+    }
+
+    if (replaceRoute) {
+      await router.replace(destination)
+    } else {
+      await router.push(destination)
+    }
+  } catch {
+    inviteActionError.value =
+      '招待コードを確認できませんでした。通信環境を確認してもう一度お試しください。'
+
+    if (replaceRoute) {
+      await router.replace({ name: 'home' })
+    }
+  } finally {
+    isJoining.value = false
+  }
+}
+
 const saveDisplayName = async () => {
+  if (isJoining.value) return
+
   const saved = scheduleStore.setDisplayName(displayNameInput.value)
 
   if (!saved) {
@@ -43,38 +112,7 @@ const saveDisplayName = async () => {
       return
     }
 
-    const schedule = await scheduleStore.findScheduleByInviteCode(code)
-
-    if (!schedule) {
-      await router.replace({
-        name: 'home',
-        query: {
-          inviteError: 'not-found',
-        },
-      })
-
-      return
-    }
-
-    const joined = await scheduleStore.joinSchedule(schedule.id)
-
-    if (!joined) {
-      await router.replace({
-        name: 'home',
-        query: {
-          inviteError: 'join-failed',
-        },
-      })
-
-      return
-    }
-
-    await router.replace({
-      name: 'condition-input',
-      params: {
-        id: schedule.id,
-      },
-    })
+    await joinFromCode(code, true)
   }
 }
 
@@ -127,32 +165,15 @@ const goResult = (id: string) => {
 }
 
 const joinByInviteCode = async () => {
+  if (isJoining.value) return
+
   const code = inviteCode.value.trim().toUpperCase()
 
   if (!code) {
     return
   }
 
-  const schedule = await scheduleStore.findScheduleByInviteCode(code)
-
-  if (!schedule) {
-    console.error('招待コードに一致する予定がありません。')
-
-    return
-  }
-
-  const joined = await scheduleStore.joinSchedule(schedule.id)
-
-  if (!joined) {
-    return
-  }
-
-  router.push({
-    name: 'condition-input',
-    params: {
-      id: schedule.id,
-    },
-  })
+  await joinFromCode(code)
 }
 </script>
 
@@ -167,7 +188,10 @@ const joinByInviteCode = async () => {
       </header>
 
       <!-- 初回セットアップ -->
-      <section v-if="!hasDisplayName" class="home-view__setup">
+      <section
+        v-if="!hasDisplayName || (isJoining && isInviteRoute)"
+        class="home-view__setup"
+      >
         <div class="home-view__setup-heading">
           <h2>はじめまして！</h2>
 
@@ -180,7 +204,14 @@ const joinByInviteCode = async () => {
         <form class="home-view__setup-form" @submit.prevent="saveDisplayName">
           <BaseInput v-model="displayNameInput" placeholder="名前を入力" />
 
-          <BaseButton type="submit" :disabled="!displayNameInput.trim()"> はじめる </BaseButton>
+          <BaseButton
+            type="submit"
+            :disabled="!displayNameInput.trim()"
+            :loading="isJoining"
+            loading-label="参加中..."
+          >
+            はじめる
+          </BaseButton>
         </form>
 
         <p class="home-view__setup-hint">入力した名前は、参加する予定で友達にも表示されます。</p>
@@ -251,9 +282,18 @@ const joinByInviteCode = async () => {
           <form class="home-view__invite-form" @submit.prevent="joinByInviteCode">
             <BaseInput v-model="inviteCode" placeholder="8桁の招待コードを入力" />
 
-            <BaseButton type="submit" :disabled="!inviteCode.trim()">
+            <BaseButton
+              type="submit"
+              :disabled="!inviteCode.trim()"
+              :loading="isJoining"
+              loading-label="予定を確認中..."
+            >
               招待コードで参加する
             </BaseButton>
+
+            <p v-if="inviteActionError" class="home-view__invite-error" role="alert">
+              {{ inviteActionError }}
+            </p>
           </form>
         </section>
         </template>
@@ -329,6 +369,14 @@ const joinByInviteCode = async () => {
     display: flex;
     flex-direction: column;
     gap: $spacing-2;
+  }
+
+  &__invite-error {
+    margin: 0;
+    color: $color-error;
+    font-size: $font-size-caption;
+    line-height: 1.5;
+    text-align: center;
   }
 
   &__create-button-content {

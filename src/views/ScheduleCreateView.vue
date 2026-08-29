@@ -14,23 +14,34 @@ const title = ref('')
 const startDate = ref('')
 const endDate = ref('')
 const memo = ref('')
+const isCreating = ref(false)
+const createError = ref('')
 
 const createSchedule = async () => {
-  if (!title.value.trim() || !startDate.value || !endDate.value) {
+  if (isCreating.value || !title.value.trim() || !startDate.value || !endDate.value) {
     return
   }
 
-  const id = await scheduleStore.createSchedule({
-    title: title.value.trim(),
-    startDate: startDate.value,
-    endDate: endDate.value,
-    memo: memo.value.trim() || undefined,
-  })
+  isCreating.value = true
+  createError.value = ''
 
-  router.push({
-    name: 'condition-input',
-    params: { id },
-  })
+  try {
+    const id = await scheduleStore.createSchedule({
+      title: title.value.trim(),
+      startDate: startDate.value,
+      endDate: endDate.value,
+      memo: memo.value.trim() || undefined,
+    })
+
+    await router.push({
+      name: 'condition-input',
+      params: { id },
+    })
+  } catch {
+    createError.value = '予定を作成できませんでした。もう一度お試しください。'
+  } finally {
+    isCreating.value = false
+  }
 }
 
 const goBack = () => {
@@ -89,7 +100,16 @@ const goBack = () => {
       </label>
 
       <div class="schedule-create__submit">
-        <BaseButton type="submit" :disabled="!title.trim() || !startDate || !endDate">
+        <p v-if="createError" class="schedule-create__error" role="alert">
+          {{ createError }}
+        </p>
+
+        <BaseButton
+          type="submit"
+          :disabled="!title.trim() || !startDate || !endDate"
+          :loading="isCreating"
+          loading-label="予定を作成中..."
+        >
           予定を作成
         </BaseButton>
 
@@ -224,6 +244,13 @@ const goBack = () => {
       color: $color-neutral-600;
       font-size: $font-size-caption;
     }
+  }
+
+  &__submit &__error {
+    margin: 0;
+    color: $color-error;
+    font-size: $font-size-caption;
+    text-align: center;
   }
 }
 </style>

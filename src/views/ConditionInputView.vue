@@ -918,8 +918,13 @@ const goBack = () => {
             {{ submitError }}
           </p>
 
-          <BaseButton type="submit" :disabled="!canSubmit || isSubmitting">
-            {{ isSubmitting ? '回答を保存中...' : '回答を送る' }}
+          <BaseButton
+            type="submit"
+            :disabled="!canSubmit"
+            :loading="isSubmitting"
+            loading-label="回答を保存中..."
+          >
+            回答を送る
           </BaseButton>
         </div>
       </form>
