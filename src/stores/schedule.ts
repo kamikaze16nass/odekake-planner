@@ -8,6 +8,7 @@ import type {
   Schedule,
   ScheduleResponse,
   ScheduleResult,
+  TransportPolicy,
 } from '@/types/schedule'
 
 type AsyncStatus = 'idle' | 'loading' | 'success' | 'error'
@@ -30,6 +31,7 @@ type ScheduleRow = {
   end_date: string
   memo: string | null
   status: 'active' | 'completed'
+  transport_policy: TransportPolicy
   invite_code: string
   created_by: string
   created_at: string
@@ -474,32 +476,29 @@ export const useScheduleStore =
               ),
             )
 
-            const transportModes = countValues(
-              responses.map((response) => {
-                if (
-                  response.transportMode ===
-                  'walking'
-                ) {
-                  return '徒歩'
-                }
+            const transportModes = schedule.transportPolicy === 'transit'
+              ? []
+              : countValues(
+                responses
+                  .filter((response) => response.transportMode !== 'transit')
+                  .map((response) => {
+                    if (
+                      response.transportMode ===
+                      'walking'
+                    ) {
+                      return '徒歩'
+                    }
 
-                if (
-                  response.transportMode ===
-                  'driving'
-                ) {
-                  return '車'
-                }
+                    if (
+                      response.transportMode ===
+                      'driving'
+                    ) {
+                      return '車'
+                    }
 
-                if (
-                  response.transportMode ===
-                  'transit'
-                ) {
-                  return '電車'
-                }
-
-                return '条件なし'
-              }),
-            )
+                    return '条件なし'
+                  }),
+              )
 
             const buildTravelTimes = (
               mode: 'walking' | 'driving',
@@ -852,6 +851,9 @@ export const useScheduleStore =
                 status:
                   scheduleRow.status,
 
+                transportPolicy:
+                  scheduleRow.transport_policy,
+
                 members,
                 responses,
 
@@ -1033,6 +1035,10 @@ export const useScheduleStore =
           return false
         }
 
+        const hasDeparture =
+          response.transportMode === 'walking' ||
+          response.transportMode === 'driving'
+
         const {
           error,
         } = await supabase
@@ -1049,21 +1055,29 @@ export const useScheduleStore =
                 response.activities,
 
               departure:
-                response.departure,
+                hasDeparture
+                  ? response.departure
+                  : null,
 
               departure_lat:
-                response.departureLocation?.lat ??
-                null,
+                hasDeparture
+                  ? response.departureLocation?.lat ??
+                    null
+                  : null,
 
               departure_lng:
-                response.departureLocation?.lng ??
-                null,
+                hasDeparture
+                  ? response.departureLocation?.lng ??
+                    null
+                  : null,
 
               transport_mode:
                 response.transportMode,
 
               travel_time:
-                response.travelTime,
+                hasDeparture
+                  ? response.travelTime
+                  : null,
 
               preferred_areas:
                 response.preferredAreas,
@@ -1115,6 +1129,7 @@ export const useScheduleStore =
         title: string
         startDate: string
         endDate: string
+        transportPolicy: TransportPolicy
         memo?: string
       }) {
         const currentUserId =
@@ -1152,6 +1167,7 @@ export const useScheduleStore =
             end_date: input.endDate,
             memo: input.memo ?? null,
             status: 'active',
+            transport_policy: input.transportPolicy,
             invite_code: inviteCode,
             created_by: currentUserId,
           })

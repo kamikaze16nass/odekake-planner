@@ -12,6 +12,8 @@ import MapPicker from '@/components/common/MapPicker.vue'
 import { forwardGeocode, reverseGeocode } from '@/services/geoapify'
 import { useScheduleStore } from '@/stores/schedule'
 
+import type { TransportMode } from '@/types/schedule'
+
 const route = useRoute()
 const router = useRouter()
 const scheduleStore = useScheduleStore()
@@ -49,17 +51,14 @@ const activities = [
 const selectedDates = ref<string[]>([])
 const selectedActivities = ref<string[]>([])
 
-type TransportMode = 'walking' | 'driving' | 'transit' | null
-type TravelOption = 'walking' | 'driving' | 'transit' | 'none'
+type TravelOption = 'walking' | 'driving' | 'none'
 
 const travelOptions = [
   { value: 'walking', label: '徒歩', icon: 'walking' },
   { value: 'driving', label: '車', icon: 'car' },
-  { value: 'transit', label: '電車', icon: 'train' },
-  { value: 'none', label: '条件なし', icon: 'no-condition' },
+  { value: 'none', label: '何でもOK', icon: 'no-condition' },
 ] as const
 
-const transportMode = ref<TransportMode>(null)
 const travelOption = ref<TravelOption | null>(null)
 const travelTime = ref<number | null>(null)
 
@@ -85,8 +84,12 @@ const preferredAreaLimit = 5
 const isSubmitting = ref(false)
 const submitError = ref('')
 
+const isTransitSchedule = computed(() => schedule.value?.transportPolicy === 'transit')
+
 const needsDeparture = computed(
-  () => travelOption.value === 'walking' || travelOption.value === 'driving',
+  () =>
+    !isTransitSchedule.value &&
+    (travelOption.value === 'walking' || travelOption.value === 'driving'),
 )
 
 const isMapInteractionDisabled = computed(
@@ -270,8 +273,6 @@ const selectTravelOption = (option: TravelOption) => {
   travelOption.value = option
 
   if (option === 'walking' || option === 'driving') {
-    transportMode.value = option
-
     const config = travelTimeConfig.value
     if (config) {
       const isValidCurrentTime =
@@ -294,7 +295,6 @@ const selectTravelOption = (option: TravelOption) => {
     return
   }
 
-  transportMode.value = option === 'transit' ? 'transit' : null
   travelTime.value = null
   clearDepartureState()
 }
@@ -469,8 +469,7 @@ watch(
     })
 
     selectedActivities.value = [...response.activities]
-    transportMode.value = response.transportMode
-    travelTime.value = response.travelTime
+    travelTime.value = isTransitSchedule.value ? null : response.travelTime
     preferredAreas.value = [...(response.preferredAreas ?? [])]
     preferredAreaInput.value = ''
 
@@ -478,10 +477,10 @@ watch(
       travelOption.value = 'walking'
     } else if (response.transportMode === 'driving') {
       travelOption.value = 'driving'
-    } else if (response.transportMode === 'transit') {
-      travelOption.value = 'transit'
-    } else {
+    } else if (response.transportMode === null) {
       travelOption.value = 'none'
+    } else {
+      travelOption.value = null
     }
 
     if (response.transportMode === 'walking' || response.transportMode === 'driving') {
@@ -525,7 +524,6 @@ const canSubmit = computed(() => {
   if (
     selectedDates.value.length === 0 ||
     selectedActivities.value.length === 0 ||
-    !travelOption.value ||
     isResolvingDeparture.value ||
     isSearchingDeparture.value ||
     isDepartureSearchPending.value
@@ -533,16 +531,18 @@ const canSubmit = computed(() => {
     return false
   }
 
+  if (isTransitSchedule.value) {
+    return preferredAreas.value.length >= 1
+  }
+
+  if (!travelOption.value) return false
+
   if (needsDeparture.value) {
     return (
       Boolean(departure.value.trim()) &&
       Boolean(departureLocation.value) &&
       travelTime.value !== null
     )
-  }
-
-  if (travelOption.value === 'transit') {
-    return preferredAreas.value.length >= 1
   }
 
   return true
@@ -555,13 +555,20 @@ const submitAnswer = async () => {
   submitError.value = ''
 
   try {
+    const transitSchedule = schedule.value?.transportPolicy === 'transit'
+    const selectedFlexibleMode: TransportMode =
+      travelOption.value === 'walking' || travelOption.value === 'driving'
+        ? travelOption.value
+        : null
+
     const saved = await scheduleStore.submitResponse(scheduleId.value, {
       availableDates: selectedDates.value,
       activities: selectedActivities.value,
-      departure: needsDeparture.value ? departure.value.trim() : '',
-      departureLocation: needsDeparture.value ? departureLocation.value : null,
-      transportMode: transportMode.value,
-      travelTime: needsDeparture.value ? travelTime.value : null,
+      departure: !transitSchedule && needsDeparture.value ? departure.value.trim() : '',
+      departureLocation:
+        !transitSchedule && needsDeparture.value ? departureLocation.value : null,
+      transportMode: transitSchedule ? 'transit' : selectedFlexibleMode,
+      travelTime: !transitSchedule && needsDeparture.value ? travelTime.value : null,
       preferredAreas: [...preferredAreas.value],
     })
 
@@ -712,9 +719,23 @@ const goBack = () => {
             <h2>どうやって行く？</h2>
           </div>
 
-          <p>まず移動方法を選ぶと、必要な条件だけ表示されます。</p>
+          <p v-if="isTransitSchedule">
+            この予定では、行きたい場所・ジャンルを投票してください。
+          </p>
+          <p v-else>まず移動方法を選ぶと、必要な条件だけ表示されます。</p>
 
-          <fieldset class="condition-input__transport">
+          <div
+            v-if="isTransitSchedule"
+            class="condition-input__travel-message condition-input__travel-message--transit"
+          >
+            <strong class="condition-input__travel-message-heading">
+              <AppIcon name="train" :size="20" />
+              この予定は電車で移動します
+            </strong>
+            <p>移動方法・出発地点・移動時間の入力は必要ありません。</p>
+          </div>
+
+          <fieldset v-else class="condition-input__transport">
             <legend class="condition-input__sr-only">移動方法</legend>
 
             <div class="condition-input__transport-options">
@@ -826,17 +847,6 @@ const goBack = () => {
           </template>
 
           <div
-            v-else-if="travelOption === 'transit'"
-            class="condition-input__travel-message condition-input__travel-message--transit"
-          >
-            <strong class="condition-input__travel-message-heading">
-              <AppIcon name="train" :size="20" />
-              電車は「ここに行きたい！」方式
-            </strong>
-            <p>出発地点や移動時間は決めず、行きたい候補を投票します。</p>
-          </div>
-
-          <div
             v-else-if="travelOption === 'none'"
             class="condition-input__travel-message condition-input__travel-message--none"
           >
@@ -847,11 +857,11 @@ const goBack = () => {
             <p>出発地点や移動時間を指定せず、行きたい候補だけ自由に足せます。</p>
           </div>
 
-          <div v-if="travelOption" class="condition-input__vote-card">
+          <div v-if="isTransitSchedule || travelOption" class="condition-input__vote-card">
             <div class="condition-input__vote-heading">
               <div>
                 <strong>行きたい場所・ジャンル</strong>
-                <span v-if="travelOption === 'transit'" class="condition-input__required">
+                <span v-if="isTransitSchedule" class="condition-input__required">
                   電車は1つ以上必須
                 </span>
                 <span v-else>任意</span>
@@ -860,7 +870,7 @@ const goBack = () => {
               <span>{{ preferredAreas.length }}/{{ preferredAreaLimit }}</span>
             </div>
 
-            <p>1枠につき1つ入力してください。例：横浜 / カフェ / 公園</p>
+            <p>行きたいところを最大5票まで追加できます。例：横浜 / カフェ / 公園</p>
             <p class="condition-input__vote-note">
               同じ候補を複数入れてOK。そのぶん「行きたい！」票として集計されます。
             </p>

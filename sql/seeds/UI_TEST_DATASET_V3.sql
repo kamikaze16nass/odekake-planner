@@ -9,7 +9,7 @@ begin;
 -- 予定・参加者・回答データをまとめて登録します。
 --
 -- 【今回の仕様】
--- ・交通手段：徒歩 / 車 / 電車 / 条件なし
+-- ・予定方針：電車固定 / 徒歩・車・何でもOKから選択
 -- ・徒歩：10分単位、最大60分
 -- ・車：30分単位、最大180分
 -- ・電車：出発地点・移動時間なし、行きたい場所・ジャンル1〜5票
@@ -88,6 +88,7 @@ $$;
 --   members.user_id      : text
 --   responses.user_id    : uuid
 --   responses.preferred_areas : text[]
+--   schedules.transport_policy : text
 
 do $$
 declare
@@ -95,6 +96,7 @@ declare
   members_user_id_type text;
   responses_user_id_type text;
   preferred_areas_udt text;
+  transport_policy_type text;
 begin
   select data_type
     into schedules_created_by_type
@@ -124,6 +126,13 @@ begin
     and table_name = 'responses'
     and column_name = 'preferred_areas';
 
+  select data_type
+    into transport_policy_type
+  from information_schema.columns
+  where table_schema = 'public'
+    and table_name = 'schedules'
+    and column_name = 'transport_policy';
+
   if schedules_created_by_type is distinct from 'text' then
     raise exception
       'UI_TEST_DATASET_V3: schedules.created_by は text 前提です。現在: %',
@@ -146,6 +155,12 @@ begin
     raise exception
       'UI_TEST_DATASET_V3: responses.preferred_areas は text[] 前提です。現在: %',
       coalesce(preferred_areas_udt, '列なし');
+  end if;
+
+  if transport_policy_type is distinct from 'text' then
+    raise exception
+      'UI_TEST_DATASET_V3: schedules.transport_policy は text 前提です。現在: %',
+      coalesce(transport_policy_type, '列なし');
   end if;
 end
 $$;
@@ -327,6 +342,11 @@ values
   '20000000-0000-4000-8000-000000000099'
 );
 
+-- UIT00002は電車固定予定。ほかの予定はdefaultのflexibleを使用します。
+update public.schedules
+set transport_policy = 'transit'
+where id = '10000000-0000-4000-8000-000000000002';
+
 -- ============================================================
 -- 2. members
 -- ============================================================
@@ -426,8 +446,8 @@ values
   '20000000-0000-4000-8000-000000000001',
   ARRAY['2026-09-12', '2026-09-18'],
   ARRAY['ごはん'],
-  '新宿駅', 35.6909, 139.7003,
-  'walking', 30,
+  null, null, null,
+  'transit', null,
   ARRAY['新宿', 'カフェ']
 ),
 (
@@ -467,7 +487,7 @@ values
   ARRAY['2026-10-10', '2026-10-24'],
   ARRAY['ごはん'],
   null, null, null,
-  'transit', null,
+  null, null,
   ARRAY['東京', '東京', '丸の内', 'カフェ', 'カフェ']
 ),
 (
@@ -529,7 +549,7 @@ values
   ARRAY['2026-10-10'],
   ARRAY['ごはん'],
   null, null, null,
-  'transit', null,
+  null, null,
   ARRAY['新宿', '新宿', '焼肉', '焼肉', '焼肉']
 ),
 (
@@ -569,7 +589,7 @@ values
   ARRAY['2026-10-12'],
   ARRAY['ショッピング'],
   null, null, null,
-  'transit', null,
+  null, null,
   ARRAY['銀座', '銀座', 'ショッピング']
 ),
 (
@@ -609,7 +629,7 @@ values
   ARRAY['2026-09-27', '2026-10-03'],
   ARRAY['ごはん', 'のんびり'],
   null, null, null,
-  'transit', null,
+  null, null,
   ARRAY['浅草', '浅草', 'カフェ']
 ),
 
@@ -653,7 +673,7 @@ values
   ARRAY['2026-10-17', '2026-10-24', '2026-10-31'],
   ARRAY['ごはん', '映画', '美術館', 'のんびり'],
   null, null, null,
-  'transit', null,
+  null, null,
   ARRAY['東京', '上野', 'カフェ', '美術館', '公園']
 ),
 
@@ -675,7 +695,7 @@ values
   ARRAY['2026-12-05'],
   ARRAY['映画'],
   null, null, null,
-  'transit', null,
+  null, null,
   ARRAY['新宿', '映画館']
 ),
 
@@ -697,7 +717,7 @@ values
   ARRAY['2027-01-03', '2027-01-10'],
   ARRAY['何でもOK'],
   null, null, null,
-  'transit', null,
+  null, null,
   ARRAY['浅草', '東京']
 ),
 
@@ -737,7 +757,7 @@ values
   ARRAY['2026-11-14'],
   ARRAY['ごはん'],
   null, null, null,
-  'transit', null,
+  null, null,
   ARRAY['東京', '東京', '丸の内']
 ),
 (
@@ -764,7 +784,7 @@ values
   ARRAY['2026-11-14'],
   ARRAY['のんびり'],
   null, null, null,
-  'transit', null,
+  null, null,
   ARRAY['浅草', '上野', '公園']
 ),
 (
@@ -795,7 +815,7 @@ values
   ARRAY['2026-08-02'],
   ARRAY['ごはん'],
   null, null, null,
-  'transit', null,
+  null, null,
   ARRAY['渋谷', '渋谷', '居酒屋']
 ),
 

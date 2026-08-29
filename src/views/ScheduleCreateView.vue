@@ -14,6 +14,7 @@ const title = ref('')
 const startDate = ref('')
 const endDate = ref('')
 const memo = ref('')
+const isTransitTrip = ref(false)
 const isCreating = ref(false)
 const createError = ref('')
 
@@ -30,6 +31,7 @@ const createSchedule = async () => {
       title: title.value.trim(),
       startDate: startDate.value,
       endDate: endDate.value,
+      transportPolicy: isTransitTrip.value ? 'transit' : 'flexible',
       memo: memo.value.trim() || undefined,
     })
 
@@ -86,6 +88,14 @@ const goBack = () => {
           </label>
         </div>
       </section>
+
+      <label class="schedule-create__transport-policy">
+        <input v-model="isTransitTrip" type="checkbox" />
+
+        <span class="schedule-create__transport-policy-content">
+          <strong>移動手段を電車にする</strong>
+        </span>
+      </label>
 
       <label class="schedule-create__memo">
         <span>メモ（任意）</span>
@@ -243,6 +253,48 @@ const goBack = () => {
       text-align: center;
       color: $color-neutral-600;
       font-size: $font-size-caption;
+    }
+  }
+
+  &__transport-policy {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: $spacing-2;
+    border: 1px solid $color-neutral-300;
+    border-radius: $radius-input;
+    background: $color-surface;
+    cursor: pointer;
+
+    &:has(input:checked) {
+      border-color: $color-primary;
+      background: $color-primary-light;
+    }
+
+    input {
+      width: 20px;
+      height: 20px;
+      margin: 2px 0 0;
+      accent-color: $color-primary;
+    }
+  }
+
+  &__transport-policy-content {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+
+    strong {
+      color: $color-text;
+      font-size: $font-size-body;
+    }
+
+    small {
+      color: $color-neutral-600;
+      font-size: $font-size-caption;
+      line-height: 1.5;
     }
   }
 

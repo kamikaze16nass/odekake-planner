@@ -7,7 +7,9 @@ import AppIcon from '@/components/common/AppIcon.vue'
 import BottomNavigation from '@/components/common/BottomNavigation.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
+import TravelRangeMap from '@/components/common/TravelRangeMap.vue'
 import { useScheduleStore } from '@/stores/schedule'
+import { calculateTravelRadiusMeters } from '@/utils/travelRange'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,6 +20,45 @@ const schedule = computed(() => scheduleStore.getScheduleById(scheduleId.value))
 const result = computed(() => scheduleStore.getResultByScheduleId(scheduleId.value))
 
 const answeredCount = computed(() => schedule.value?.responses.length ?? 0)
+
+const travelRanges = computed(() => {
+  if (schedule.value?.transportPolicy !== 'flexible') return []
+
+  return schedule.value.responses.flatMap((response) => {
+    if (
+      response.transportMode !== 'walking' &&
+      response.transportMode !== 'driving'
+    ) {
+      return []
+    }
+
+    const location = response.departureLocation
+    const radiusMeters = calculateTravelRadiusMeters(
+      response.transportMode,
+      response.travelTime,
+    )
+
+    if (
+      !location ||
+      !Number.isFinite(location.lat) ||
+      !Number.isFinite(location.lng) ||
+      location.lat < -90 ||
+      location.lat > 90 ||
+      location.lng < -180 ||
+      location.lng > 180 ||
+      radiusMeters === null
+    ) {
+      return []
+    }
+
+    return [{
+      id: response.userId,
+      lat: location.lat,
+      lng: location.lng,
+      radiusMeters,
+    }]
+  })
+})
 
 const isInitialLoading = computed(
   () =>
@@ -67,6 +108,22 @@ const visibleDates = computed(() => takeGroupsUntilTarget(result.value?.dates ??
 const visibleActivities = computed(() => takeGroupsUntilTarget(result.value?.activities ?? []))
 
 const visibleAreas = computed(() => takeGroupsUntilTarget(result.value?.areas ?? []))
+
+function compressConsecutiveCounts<T extends { count: number }>(items: T[]): T[] {
+  return items.filter(
+    (item, index) =>
+      item.count > 0 &&
+      item.count !== items[index + 1]?.count,
+  )
+}
+
+const visibleWalkingTravelTimes = computed(() =>
+  compressConsecutiveCounts(result.value?.walkingTravelTimes ?? []),
+)
+
+const visibleDrivingTravelTimes = computed(() =>
+  compressConsecutiveCounts(result.value?.drivingTravelTimes ?? []),
+)
 
 const peoplePercentage = (count: number) => {
   if (!answeredCount.value) return '0%'
@@ -373,17 +430,10 @@ const isAllAnswered = computed(() => {
           </div>
 
           <div class="result-view__group result-view__group--votes">
-            <div class="result-view__group-heading">
-              <h3 class="result-view__group-title">
-                <AppIcon class="result-view__group-icon--area" name="place-vote" :size="22" />
-                行きたい場所・ジャンル
-              </h3>
-              <span>1枠 = 1票</span>
-            </div>
-
-            <p class="result-view__vote-description">
-              同じ候補への重ね投票も、そのまま「行きたい！」の強さとして集計しています。
-            </p>
+            <h3 class="result-view__group-title">
+              <AppIcon class="result-view__group-icon--area" name="place-vote" :size="22" />
+              みんなの行きたい場所
+            </h3>
 
             <div v-if="visibleAreas.length" class="result-view__vote-list">
               <article
@@ -416,31 +466,51 @@ const isAllAnswered = computed(() => {
           <div class="result-view__group">
             <h3 class="result-view__group-title">
               <AppIcon class="result-view__group-icon--transport" name="route" :size="22" />
-              移動方法
+              {{ schedule.transportPolicy === 'transit' ? '移動手段' : '移動方法' }}
             </h3>
 
-            <div
-              v-for="item in result.transportModes"
-              :key="item.label"
-              class="result-view__row"
-            >
-              <span class="result-view__row-label">
-                {{ item.label }}
-              </span>
-
-              <div class="result-view__bar">
-                <div
-                  class="result-view__bar-value result-view__bar-value--transport"
-                  :style="{ width: peoplePercentage(item.count) }"
-                />
-              </div>
-
-              <strong>{{ item.count }}人</strong>
+            <div v-if="schedule.transportPolicy === 'transit'" class="result-view__fixed-transport">
+              <AppIcon name="train" :size="22" />
+              <span>電車</span>
             </div>
+
+            <template v-else>
+              <div
+                v-for="item in result.transportModes"
+                :key="item.label"
+                class="result-view__row"
+              >
+                <span class="result-view__row-label">
+                  {{ item.label }}
+                </span>
+
+                <div class="result-view__bar">
+                  <div
+                    class="result-view__bar-value result-view__bar-value--transport"
+                    :style="{ width: peoplePercentage(item.count) }"
+                  />
+                </div>
+
+                <strong>{{ item.count }}人</strong>
+              </div>
+            </template>
+          </div>
+
+          <div v-if="travelRanges.length" class="result-view__group">
+            <h3 class="result-view__group-title">
+              <AppIcon class="result-view__group-icon--transport" name="map-pin" :size="22" />
+              移動できそうな範囲
+            </h3>
+
+            <p class="result-view__range-description">
+              回答した移動時間から算出した、おおよその範囲です。
+            </p>
+
+            <TravelRangeMap :ranges="travelRanges" />
           </div>
 
           <div
-            v-if="result.walkingTravelTimes.length"
+            v-if="schedule.transportPolicy === 'flexible' && visibleWalkingTravelTimes.length"
             class="result-view__group"
           >
             <h3 class="result-view__group-title">
@@ -449,7 +519,7 @@ const isAllAnswered = computed(() => {
             </h3>
 
             <div
-              v-for="item in result.walkingTravelTimes"
+              v-for="item in visibleWalkingTravelTimes"
               :key="item.label"
               class="result-view__row"
             >
@@ -469,7 +539,7 @@ const isAllAnswered = computed(() => {
           </div>
 
           <div
-            v-if="result.drivingTravelTimes.length"
+            v-if="schedule.transportPolicy === 'flexible' && visibleDrivingTravelTimes.length"
             class="result-view__group"
           >
             <h3 class="result-view__group-title">
@@ -478,7 +548,7 @@ const isAllAnswered = computed(() => {
             </h3>
 
             <div
-              v-for="item in result.drivingTravelTimes"
+              v-for="item in visibleDrivingTravelTimes"
               :key="item.label"
               class="result-view__row"
             >
@@ -1018,6 +1088,23 @@ $result-decoration-gradient-blue: #f7fbff;
     color: $color-primary-dark;
   }
 
+  &__fixed-transport {
+    display: flex;
+    align-items: center;
+    gap: $spacing-1;
+    padding: $spacing-2;
+    border-radius: $radius-input;
+    background: $color-accent-blue-light;
+    color: $color-accent-blue-dark;
+    font-weight: $font-weight-semibold;
+  }
+
+  &__range-description {
+    margin: 0 0 $spacing-2;
+    color: $color-neutral-600;
+    font-size: $font-size-caption;
+  }
+
   &__group {
     padding-bottom: $spacing-3;
 
@@ -1038,18 +1125,6 @@ $result-decoration-gradient-blue: #f7fbff;
     }
   }
 
-  &__group-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: $spacing-1;
-
-    > span {
-      color: $color-neutral-600;
-      font-size: $font-size-caption;
-    }
-  }
-
   &__group-title {
     display: flex;
     align-items: center;
@@ -1058,10 +1133,6 @@ $result-decoration-gradient-blue: #f7fbff;
     color: $color-text;
     font-size: $font-size-card-title;
     font-weight: $font-weight-semibold;
-  }
-
-  &__group-heading &__group-title {
-    margin-bottom: 0;
   }
 
   &__group-icon {
@@ -1085,12 +1156,6 @@ $result-decoration-gradient-blue: #f7fbff;
     &--driving {
       color: $color-accent-yellow-dark;
     }
-  }
-
-  &__vote-description {
-    margin: $spacing-1 0 $spacing-2;
-    color: $color-neutral-600;
-    font-size: $font-size-caption;
   }
 
   &__row {

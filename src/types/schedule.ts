@@ -1,5 +1,7 @@
 export type ScheduleStatus = 'active' | 'completed'
 
+export type TransportPolicy = 'transit' | 'flexible'
+
 export type Member = {
   id: string
   name: string
@@ -61,6 +63,7 @@ export type Schedule = {
   memo?: string
 
   status: ScheduleStatus
+  transportPolicy: TransportPolicy
 
   members: Member[]
   responses: ScheduleResponse[]

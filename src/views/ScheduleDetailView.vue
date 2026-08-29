@@ -164,6 +164,14 @@ const sortedMembers = computed(() => {
             期間：
             {{ formatPeriod(schedule.startDate, schedule.endDate) }}
           </p>
+
+          <p
+            v-if="schedule.transportPolicy === 'transit'"
+            class="schedule-detail__transport-policy"
+          >
+            <AppIcon name="train" :size="18" />
+            電車で移動する予定です
+          </p>
         </header>
 
         <!-- 回答状況 -->
@@ -216,7 +224,9 @@ const sortedMembers = computed(() => {
               <AppIcon class="schedule-detail__answer-icon" :name="transportIcon" :size="20" />
 
               <div class="schedule-detail__answer-content">
-                <span class="schedule-detail__answer-label">交通手段</span>
+                <span class="schedule-detail__answer-label">
+                  {{ schedule.transportPolicy === 'transit' ? '予定の移動方法' : '交通手段' }}
+                </span>
                 <span>{{ transportLabel }}</span>
               </div>
             </div>
@@ -430,6 +440,19 @@ const sortedMembers = computed(() => {
 
     color: $color-text;
     line-height: 1.55;
+  }
+
+  &__transport-policy {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    margin: $spacing-1 0 0;
+    border-radius: $radius-chip;
+    background: $color-accent-blue-light;
+    color: $color-accent-blue-dark;
+    font-size: $font-size-caption;
+    font-weight: $font-weight-semibold;
   }
 
   &__answer-content {
