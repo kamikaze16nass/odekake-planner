@@ -11,6 +11,7 @@ import NoticeCard from '@/components/schedule/NoticeCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 import { useScheduleStore } from '@/stores/schedule'
+import { formatSchedulePeriod } from '@/utils/scheduleDate'
 
 const router = useRouter()
 const route = useRoute()
@@ -118,6 +119,10 @@ const saveDisplayName = async () => {
 
 const unansweredSchedule = computed(() => scheduleStore.unansweredSchedules[0])
 
+const waitingForOthersSchedule = computed(
+  () => scheduleStore.waitingForOthersSchedules[0],
+)
+
 const allAnsweredSchedule = computed(() => scheduleStore.allAnsweredSchedules[0])
 
 const isInitialLoading = computed(
@@ -136,18 +141,15 @@ const retryScheduleData = async () => {
   await scheduleStore.fetchScheduleData()
 }
 
-const formatPeriod = (startDate: string, endDate: string) => {
-  const format = (dateString: string) => {
-    const [, month, day] = dateString.split('-').map(Number)
-
-    return `${month}/${day}`
-  }
-
-  return `${format(startDate)}〜${format(endDate)}`
-}
-
 const goCreateSchedule = () => {
   router.push({ name: 'schedule-create' })
+}
+
+const goDetail = (id: string) => {
+  router.push({
+    name: 'schedule-detail',
+    params: { id },
+  })
 }
 
 const goAnswer = (id: string) => {
@@ -239,10 +241,21 @@ const joinByInviteCode = async () => {
               type="answer-required"
               title="回答が必要な予定があります！"
               :schedule-name="unansweredSchedule.title"
-              :period="formatPeriod(unansweredSchedule.startDate, unansweredSchedule.endDate)"
-              :response-status="`${unansweredSchedule.members.length}人中${unansweredSchedule.responses.length}人が回答済み`"
+              :period="formatSchedulePeriod(unansweredSchedule.startDate, unansweredSchedule.endDate)"
+              :response-status="`${unansweredSchedule.responses.length} / ${unansweredSchedule.members.length} 人回答`"
               action-label="回答する"
               @action="goAnswer(unansweredSchedule.id)"
+            />
+
+            <NoticeCard
+              v-if="waitingForOthersSchedule"
+              type="waiting"
+              title="みんなの回答を待っています"
+              :schedule-name="waitingForOthersSchedule.title"
+              :period="formatSchedulePeriod(waitingForOthersSchedule.startDate, waitingForOthersSchedule.endDate)"
+              :response-status="`${waitingForOthersSchedule.responses.length} / ${waitingForOthersSchedule.members.length} 人回答`"
+              action-label="予定を見る"
+              @action="goDetail(waitingForOthersSchedule.id)"
             />
 
             <NoticeCard
@@ -250,7 +263,7 @@ const joinByInviteCode = async () => {
               type="all-answered"
               title="みんなの回答がそろいました！"
               :schedule-name="allAnsweredSchedule.title"
-              :period="formatPeriod(allAnsweredSchedule.startDate, allAnsweredSchedule.endDate)"
+              :period="formatSchedulePeriod(allAnsweredSchedule.startDate, allAnsweredSchedule.endDate)"
               action-label="集計結果を見る"
               @action="goResult(allAnsweredSchedule.id)"
             />
@@ -259,17 +272,18 @@ const joinByInviteCode = async () => {
               v-if="
                 scheduleStore.scheduleDataStatus === 'success' &&
                 !unansweredSchedule &&
+                !waitingForOthersSchedule &&
                 !allAnsweredSchedule
               "
               title="今やることはありません"
               description="次のおでかけ予定を、みんなで考えてみませんか？"
-              @action="goCreateSchedule"
+              :show-action="false"
             />
           </div>
         </section>
 
         <!-- 新規予定 -->
-        <section v-if="unansweredSchedule || allAnsweredSchedule" class="home-view__section">
+        <section class="home-view__section">
           <BaseButton variant="secondary" @click="goCreateSchedule">
             ＋ 新しい予定を作る
           </BaseButton>
@@ -316,6 +330,9 @@ const joinByInviteCode = async () => {
   min-height: 100dvh;
 
   &__content {
+    width: 100%;
+    max-width: 720px;
+    margin-inline: auto;
     flex: 1;
 
     padding-top: $spacing-3;

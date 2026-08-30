@@ -70,6 +70,14 @@ type ResponseRow = {
   updated_at: string
 }
 
+const compareSchedulesByPeriod = (a: Schedule, b: Schedule) => {
+  return (
+    a.startDate.localeCompare(b.startDate) ||
+    a.endDate.localeCompare(b.endDate) ||
+    a.id.localeCompare(b.id)
+  )
+}
+
 
 
 
@@ -154,7 +162,7 @@ export const useScheduleStore =
                 member.id ===
                 state.currentUserId,
             ),
-        )
+        ).sort(compareSchedulesByPeriod)
       },
 
       // ========================================
@@ -274,7 +282,35 @@ export const useScheduleStore =
                 state.currentUserId,
             )
           },
-        )
+        ).sort(compareSchedulesByPeriod)
+      },
+
+      waitingForOthersSchedules(state) {
+        if (!state.currentUserId) {
+          return []
+        }
+
+        return state.schedules.filter(
+          (schedule) => {
+            if (schedule.status !== 'active') {
+              return false
+            }
+
+            const isMember = schedule.members.some(
+              (member) => member.id === state.currentUserId,
+            )
+            const hasAnswered = schedule.responses.some(
+              (response) => response.userId === state.currentUserId,
+            )
+
+            return (
+              isMember &&
+              hasAnswered &&
+              schedule.members.length > 0 &&
+              schedule.responses.length < schedule.members.length
+            )
+          },
+        ).sort(compareSchedulesByPeriod)
       },
 
       allAnsweredSchedules(state) {
@@ -284,6 +320,10 @@ export const useScheduleStore =
 
         return state.schedules.filter(
           (schedule) => {
+            if (schedule.status !== 'active') {
+              return false
+            }
+
             const isMember =
               schedule.members.some(
                 (member) =>
@@ -302,7 +342,7 @@ export const useScheduleStore =
               schedule.members.length
             )
           },
-        )
+        ).sort(compareSchedulesByPeriod)
       },
 
       // ========================================

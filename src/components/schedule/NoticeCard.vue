@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import AppIcon from '@/components/common/AppIcon.vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 
-type NoticeType = 'answer-required' | 'all-answered'
+type NoticeType = 'answer-required' | 'waiting' | 'all-answered'
 
 const props = withDefaults(
   defineProps<{
@@ -23,40 +24,22 @@ const emit = defineEmits<{
   action: []
 }>()
 
-const buttonVariant = computed(() => (props.type === 'all-answered' ? 'success' : 'primary'))
+const buttonVariant = computed(() => {
+  if (props.type === 'all-answered') return 'success'
+  if (props.type === 'waiting') return 'secondary'
+  return 'primary'
+})
 </script>
 
 <template>
   <article class="notice-card" :class="`notice-card--${type}`">
     <!-- 見出し -->
     <div class="notice-card__heading">
-      <!-- 未回答：時計 -->
-      <svg
-        v-if="type === 'answer-required'"
+      <AppIcon
         class="notice-card__status-icon"
-        viewBox="0 0 32 32"
-        aria-hidden="true"
-      >
-        <circle cx="16" cy="16" r="14" fill="currentColor" />
-
-        <path
-          d="M16 8V16L21 19"
-          fill="none"
-          stroke="white"
-          stroke-width="3"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg>
-
-      <!-- 全員回答：メダル -->
-      <svg v-else class="notice-card__status-icon" viewBox="0 0 32 36" aria-hidden="true">
-        <circle cx="16" cy="14" r="12" fill="currentColor" />
-
-        <circle cx="16" cy="14" r="6" fill="white" opacity="0.9" />
-
-        <path d="M9 23L7 35L16 30L25 35L23 23" fill="currentColor" />
-      </svg>
+        :name="type === 'all-answered' ? 'check-circle' : 'clock'"
+        :size="28"
+      />
 
       <h2 class="notice-card__title">
         {{ title }}
@@ -179,6 +162,11 @@ const buttonVariant = computed(() => (props.type === 'all-answered' ? 'success' 
     background-color: rgba($color-success, 0.12);
   }
 
+  &--waiting {
+    border: 1px solid $color-neutral-200;
+    background-color: $color-surface;
+  }
+
   &__heading {
     display: flex;
     align-items: center;
@@ -198,6 +186,10 @@ const buttonVariant = computed(() => (props.type === 'all-answered' ? 'success' 
 
   &--all-answered &__status-icon {
     color: $color-success;
+  }
+
+  &--waiting &__status-icon {
+    color: $color-primary;
   }
 
   &__title {

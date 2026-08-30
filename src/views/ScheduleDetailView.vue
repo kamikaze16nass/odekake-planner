@@ -36,16 +36,36 @@ const retryScheduleData = async () => {
   await scheduleStore.fetchScheduleData()
 }
 
-const formatDate = (value: string) => {
+const parseDateParts = (value: string) => {
   const [year, month, day] = value.split('-').map(Number)
 
-  if (!year || !month || !day) return value
+  if (!year || !month || !day) return null
 
-  return `${year}/${month}/${day}`
+  return { year, month, day }
+}
+
+const crossesYear = computed(() => {
+  if (!schedule.value) return false
+
+  const start = parseDateParts(schedule.value.startDate)
+  const end = parseDateParts(schedule.value.endDate)
+
+  return Boolean(start && end && start.year !== end.year)
+})
+
+const formatScheduleDate = (value: string) => {
+  const parts = parseDateParts(value)
+
+  if (!parts) return value
+
+  const month = String(parts.month).padStart(2, '0')
+  const day = String(parts.day).padStart(2, '0')
+
+  return crossesYear.value ? `${parts.year}/${month}/${day}` : `${month}/${day}`
 }
 
 const formattedAvailableDates = computed(
-  () => currentResponse.value?.availableDates.map(formatDate) ?? [],
+  () => currentResponse.value?.availableDates.map(formatScheduleDate) ?? [],
 )
 
 const isDepartureMode = computed(
@@ -80,15 +100,36 @@ const transportIcon = computed(() => {
   }
 })
 
-const formatPeriod = (startDate: string, endDate: string) => {
-  const format = (value: string) => {
-    const [, month, day] = value.split('-').map(Number)
+const transportSummary = computed(() => {
+  const response = currentResponse.value
 
-    return `${month}/${day}`
+  if (!isDepartureMode.value || !response || response.travelTime === null) {
+    return transportLabel.value
   }
 
-  return `${format(startDate)}〜${format(endDate)}`
-}
+  return `${transportLabel.value} で ${response.travelTime}分以内`
+})
+
+const formattedPeriod = computed(() => {
+  if (!schedule.value) return ''
+
+  return `${formatScheduleDate(schedule.value.startDate)} 〜 ${formatScheduleDate(schedule.value.endDate)}`
+})
+
+const responseProgressMessage = computed(() => {
+  if (!schedule.value) return ''
+
+  if (schedule.value.responses.length === 0) return 'まだ回答がありません'
+
+  if (
+    schedule.value.members.length > 0 &&
+    schedule.value.responses.length === schedule.value.members.length
+  ) {
+    return 'みんなの回答がそろいました'
+  }
+
+  return ''
+})
 
 const goEditAnswer = () => {
   router.push({
@@ -154,24 +195,30 @@ const sortedMembers = computed(() => {
       </div>
 
       <template v-else-if="schedule">
-        <!-- 予定情報 -->
+        <!-- 予定Hero -->
         <header class="schedule-detail__header">
+          <p class="schedule-detail__eyebrow">予定詳細</p>
+
           <h1 class="schedule-detail__title">
             {{ schedule.title }}
           </h1>
 
-          <p class="schedule-detail__period">
-            期間：
-            {{ formatPeriod(schedule.startDate, schedule.endDate) }}
-          </p>
+          <div class="schedule-detail__hero-meta">
+            <div class="schedule-detail__hero-meta-item">
+              <AppIcon name="calendar" :size="19" />
+              <span class="schedule-detail__hero-meta-label">日程</span>
+              <strong>{{ formattedPeriod }}</strong>
+            </div>
 
-          <p
-            v-if="schedule.transportPolicy === 'transit'"
-            class="schedule-detail__transport-policy"
-          >
-            <AppIcon name="train" :size="18" />
-            電車で移動する予定です
-          </p>
+            <div class="schedule-detail__hero-meta-item">
+              <AppIcon
+                :name="schedule.transportPolicy === 'transit' ? 'train' : 'route'"
+                :size="19"
+              />
+              <span class="schedule-detail__hero-meta-label">移動手段</span>
+              <strong>{{ schedule.transportPolicy === 'transit' ? '電車' : '各自で選択' }}</strong>
+            </div>
+          </div>
         </header>
 
         <!-- 回答状況 -->
@@ -179,8 +226,14 @@ const sortedMembers = computed(() => {
           <div class="schedule-detail__section-header">
             <h2>回答状況</h2>
 
-            <span class="schedule-detail__response-count">
-              {{ schedule.members.length }}人中 {{ schedule.responses.length }}人が回答済み
+            <span
+              class="schedule-detail__response-count"
+              :aria-label="`${schedule.members.length}人中${schedule.responses.length}人が回答済み`"
+            >
+              <strong>{{ schedule.responses.length }}</strong>
+              <span>/</span>
+              <span>{{ schedule.members.length }}人</span>
+              <small>回答済み</small>
             </span>
           </div>
 
@@ -190,8 +243,27 @@ const sortedMembers = computed(() => {
               :key="member.id"
               :name="member.name"
               :answered="schedule.responses.some((response) => response.userId === member.id)"
+              :is-current-user="member.id === scheduleStore.currentUserId"
             />
           </div>
+        </section>
+
+        <!-- 集計結果 -->
+        <section class="schedule-detail__result-action">
+          <p v-if="responseProgressMessage" class="schedule-detail__progress-message">
+            <AppIcon
+              :name="schedule.responses.length === 0 ? 'clock' : 'check-circle'"
+              :size="19"
+            />
+            {{ responseProgressMessage }}
+          </p>
+
+          <BaseButton @click="goResult">
+            <span class="schedule-detail__button-content">
+              <AppIcon name="chart-bar" :size="20" />
+              集計結果を見る
+            </span>
+          </BaseButton>
         </section>
 
         <!-- あなたの回答 -->
@@ -199,67 +271,41 @@ const sortedMembers = computed(() => {
           <h2 class="schedule-detail__answer-heading">あなたの回答</h2>
 
           <div v-if="currentResponse" class="schedule-detail__answer">
-            <!-- 日程 -->
-            <div class="schedule-detail__answer-row">
-              <AppIcon class="schedule-detail__answer-icon" name="calendar" :size="20" />
+            <!-- いつ？ -->
+            <div class="schedule-detail__answer-row schedule-detail__answer-row--date">
+              <AppIcon class="schedule-detail__answer-icon" name="calendar" :size="21" />
 
               <div class="schedule-detail__answer-content">
-                <span class="schedule-detail__answer-label">候補日</span>
-                <span>{{ formattedAvailableDates.join('、') }}</span>
+                <span class="schedule-detail__answer-label">いつ？</span>
+                <div class="schedule-detail__answer-values">
+                  <span v-for="date in formattedAvailableDates" :key="date">{{ date }}</span>
+                </div>
               </div>
             </div>
 
-            <!-- やりたいこと -->
-            <div class="schedule-detail__answer-row">
-              <AppIcon class="schedule-detail__answer-icon" name="sparkles" :size="20" />
+            <!-- なにする？ -->
+            <div class="schedule-detail__answer-row schedule-detail__answer-row--activity">
+              <AppIcon class="schedule-detail__answer-icon" name="sparkles" :size="21" />
 
               <div class="schedule-detail__answer-content">
-                <span class="schedule-detail__answer-label">やりたいこと</span>
-                <span>{{ currentResponse.activities.join('、') }}</span>
+                <span class="schedule-detail__answer-label">なにする？</span>
+                <div class="schedule-detail__answer-values">
+                  <span v-for="activity in currentResponse.activities" :key="activity">
+                    {{ activity }}
+                  </span>
+                </div>
               </div>
             </div>
 
-            <!-- 交通手段 -->
-            <div class="schedule-detail__answer-row">
-              <AppIcon class="schedule-detail__answer-icon" :name="transportIcon" :size="20" />
-
-              <div class="schedule-detail__answer-content">
-                <span class="schedule-detail__answer-label">
-                  {{ schedule.transportPolicy === 'transit' ? '予定の移動方法' : '交通手段' }}
-                </span>
-                <span>{{ transportLabel }}</span>
-              </div>
-            </div>
-
-            <!-- 出発地点 -->
-            <div v-if="isDepartureMode" class="schedule-detail__answer-row">
-              <AppIcon class="schedule-detail__answer-icon" name="map-pin" :size="20" />
-
-              <div class="schedule-detail__answer-content">
-                <span class="schedule-detail__answer-label">出発地点</span>
-                <span>{{ currentResponse.departure }}</span>
-              </div>
-            </div>
-
-            <!-- 移動可能時間 -->
-            <div v-if="isDepartureMode" class="schedule-detail__answer-row">
-              <AppIcon class="schedule-detail__answer-icon" name="clock" :size="20" />
-
-              <div class="schedule-detail__answer-content">
-                <span class="schedule-detail__answer-label">移動可能時間</span>
-                <span>{{ currentResponse.travelTime }}分以内</span>
-              </div>
-            </div>
-
-            <!-- 希望エリア -->
+            <!-- どこ？ -->
             <div
               v-if="currentResponse.preferredAreas?.length"
-              class="schedule-detail__answer-row"
+              class="schedule-detail__answer-row schedule-detail__answer-row--area"
             >
-              <AppIcon class="schedule-detail__answer-icon" name="place-vote" :size="20" />
+              <AppIcon class="schedule-detail__answer-icon" name="place-vote" :size="21" />
 
               <div class="schedule-detail__answer-content">
-                <span class="schedule-detail__answer-label">行きたい場所・ジャンル</span>
+                <span class="schedule-detail__answer-label">どこ？</span>
                 <div class="schedule-detail__answer-chips">
                   <span
                     v-for="(area, index) in currentResponse.preferredAreas"
@@ -268,6 +314,30 @@ const sortedMembers = computed(() => {
                   >
                     {{ area }}
                   </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 移動 -->
+            <div
+              v-if="schedule.transportPolicy === 'flexible'"
+              class="schedule-detail__answer-row schedule-detail__answer-row--transport"
+            >
+              <AppIcon class="schedule-detail__answer-icon" :name="transportIcon" :size="21" />
+
+              <div class="schedule-detail__answer-content">
+                <span class="schedule-detail__answer-label">移動</span>
+
+                <div class="schedule-detail__answer-values">
+                  <span>{{ transportSummary }}</span>
+                </div>
+
+                <div
+                  v-if="isDepartureMode && currentResponse.departure.trim()"
+                  class="schedule-detail__answer-departure"
+                >
+                  <span class="schedule-detail__answer-detail-label">出発地点</span>
+                  <span>{{ currentResponse.departure }}</span>
                 </div>
               </div>
             </div>
@@ -280,17 +350,12 @@ const sortedMembers = computed(() => {
           </BaseButton>
         </section>
 
-        <!-- アクション -->
-        <section class="schedule-detail__actions">
-          <BaseButton @click="goResult"> 集計結果を見る </BaseButton>
-
-          <div class="schedule-detail__invite-heading">予定に友達を追加する！</div>
-
+        <!-- 招待 -->
+        <section class="schedule-detail__invite">
           <BaseButton variant="secondary" @click="goInvite">
-            <span class="schedule-detail__invite-button">
-              <AppIcon class="schedule-detail__invite-icon" name="user-plus" :size="22" />
-
-              <span>友達を招待</span>
+            <span class="schedule-detail__button-content">
+              <AppIcon name="user-plus" :size="21" />
+              友達を招待
             </span>
           </BaseButton>
         </section>
@@ -309,53 +374,82 @@ const sortedMembers = computed(() => {
 .schedule-detail {
   display: flex;
   flex-direction: column;
-
   min-height: 100dvh;
 
   &__content {
+    width: 100%;
+    max-width: 720px;
+    margin-inline: auto;
     flex: 1;
     padding-top: $spacing-3;
   }
-
-  // ========================================
-  // 予定情報
-  // ========================================
 
   &__header {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-
+    gap: $spacing-1;
+    padding: $spacing-3 $spacing-2;
+    border: 1px solid $color-neutral-200;
+    border-radius: $radius-card;
+    background: $color-surface;
     text-align: center;
   }
 
-  &__title {
+  &__eyebrow {
     margin: 0;
+    color: $color-neutral-600;
+    font-size: $font-size-caption;
+    font-weight: $font-weight-semibold;
+  }
 
+  &__title {
+    max-width: 100%;
+    margin: 0;
     color: $color-primary-dark;
     font-size: $font-size-page-title;
     font-weight: $font-weight-bold;
     line-height: 1.35;
+    overflow-wrap: anywhere;
   }
 
-  &__period {
-    margin: 0;
-
-    color: $color-text;
-    font-size: $font-size-body;
+  &__hero-meta {
+    display: grid;
+    width: 100%;
+    gap: $spacing-1;
+    margin-top: $spacing-1;
   }
 
-  // ========================================
-  // セクション
-  // ========================================
+  &__hero-meta-item {
+    display: grid;
+    grid-template-columns: 22px minmax(72px, auto) minmax(0, 1fr);
+    align-items: center;
+    gap: $spacing-1;
+    padding: 10px $spacing-2;
+    border-radius: $radius-button;
+    background: $color-neutral-100;
+    color: $color-primary-dark;
+    text-align: left;
+
+    strong {
+      min-width: 0;
+      color: $color-text;
+      font-size: $font-size-body;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  &__hero-meta-label {
+    color: $color-neutral-600;
+    font-size: $font-size-caption;
+    font-weight: $font-weight-semibold;
+  }
 
   &__section {
     margin-top: $spacing-4;
 
     h2 {
       margin: 0 0 $spacing-2;
-
       font-size: $font-size-section-title;
     }
   }
@@ -365,7 +459,6 @@ const sortedMembers = computed(() => {
     align-items: center;
     justify-content: space-between;
     gap: $spacing-2;
-
     margin-bottom: $spacing-2;
 
     h2 {
@@ -374,25 +467,30 @@ const sortedMembers = computed(() => {
   }
 
   &__response-count {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
     color: $color-neutral-600;
     font-size: $font-size-caption;
-  }
 
-  // ========================================
-  // 回答状況
-  // ========================================
+    strong {
+      color: $color-primary-dark;
+      font-size: $font-size-section-title;
+    }
+
+    small {
+      margin-left: 2px;
+      font-size: $font-size-caption;
+    }
+  }
 
   &__members {
     overflow-y: auto;
-
-    // 約4人分＋5人目が少し見える高さ
     max-height: 190px;
     padding: $spacing-1 $spacing-2;
-
     border: 1px solid $color-neutral-300;
     border-radius: $radius-card;
     background-color: $color-surface;
-
     scrollbar-width: thin;
     scrollbar-color: $color-primary $color-neutral-300;
 
@@ -411,9 +509,30 @@ const sortedMembers = computed(() => {
     }
   }
 
-  // ========================================
-  // あなたの回答
-  // ========================================
+  &__result-action {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-1;
+    margin-top: $spacing-2;
+  }
+
+  &__progress-message {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 0;
+    color: $color-primary-dark;
+    font-size: $font-size-caption;
+    font-weight: $font-weight-semibold;
+  }
+
+  &__button-content {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: $spacing-1;
+  }
 
   &__answer-heading {
     margin-bottom: $spacing-2;
@@ -422,37 +541,43 @@ const sortedMembers = computed(() => {
   &__answer {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-
+    gap: $spacing-1;
     margin-bottom: $spacing-2;
-    padding: $spacing-2;
-
+    padding: $spacing-1;
+    border: 1px solid $color-neutral-200;
     border-radius: $radius-card;
-    background-color: $color-primary-light;
+    background-color: $color-surface;
   }
 
   &__answer-row {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-
+    gap: $spacing-1;
     margin: 0;
-
+    padding: 12px;
+    border-radius: $radius-button;
     color: $color-text;
     line-height: 1.55;
-  }
 
-  &__transport-policy {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    margin: $spacing-1 0 0;
-    border-radius: $radius-chip;
-    background: $color-accent-blue-light;
-    color: $color-accent-blue-dark;
-    font-size: $font-size-caption;
-    font-weight: $font-weight-semibold;
+    &--date {
+      background: $color-accent-blue-light;
+      color: $color-accent-blue-dark;
+    }
+
+    &--activity {
+      background: $color-accent-green-light;
+      color: $color-accent-green-dark;
+    }
+
+    &--area {
+      background: $color-accent-pink-light;
+      color: $color-accent-pink-dark;
+    }
+
+    &--transport {
+      background: $color-accent-yellow-light;
+      color: $color-accent-yellow-dark;
+    }
   }
 
   &__answer-content {
@@ -461,36 +586,62 @@ const sortedMembers = computed(() => {
     flex: 1;
     flex-direction: column;
     gap: 4px;
+
+    > span:not(.schedule-detail__answer-label),
+    > strong {
+      color: $color-text;
+      overflow-wrap: anywhere;
+    }
   }
 
   &__answer-label {
-    color: $color-neutral-600;
+    color: currentColor;
     font-size: $font-size-caption;
     font-weight: $font-weight-semibold;
   }
 
+  &__answer-departure {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 4px;
+
+    > span:last-child {
+      color: $color-text;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  &__answer-detail-label {
+    color: $color-neutral-600;
+    font-size: $font-size-caption;
+    font-weight: $font-weight-regular;
+  }
+
+  &__answer-values,
   &__answer-chips {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
   }
 
+  &__answer-values span,
   &__answer-chip {
     padding: 4px 10px;
     border-radius: $radius-chip;
     background: rgba($color-neutral-0, 0.72);
     color: $color-text;
     font-size: $font-size-caption;
+    overflow-wrap: anywhere;
   }
 
   &__answer-icon {
     width: 21px;
     height: 21px;
     margin-top: 1px;
-
     flex-shrink: 0;
-
-    color: $color-primary;
+    color: currentColor;
   }
 
   &__no-answer {
@@ -499,39 +650,14 @@ const sortedMembers = computed(() => {
     color: $color-neutral-600;
   }
 
-  // ========================================
-  // 下部アクション
-  // ========================================
-
-  &__actions {
-    display: flex;
-    flex-direction: column;
-    gap: $spacing-2;
-
+  &__invite {
     margin-top: $spacing-4;
   }
+}
 
-  &__invite-heading {
-    margin-top: $spacing-1;
-
-    color: $color-text;
-    font-size: $font-size-section-title;
-    font-weight: $font-weight-bold;
-    text-align: center;
-  }
-
-  &__invite-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-  }
-
-  &__invite-icon {
-    width: 22px;
-    height: 22px;
-
-    flex-shrink: 0;
+@media (min-width: 600px) {
+  .schedule-detail__hero-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

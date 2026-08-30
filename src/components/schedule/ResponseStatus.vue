@@ -4,6 +4,7 @@ import AppIcon from '@/components/common/AppIcon.vue'
 defineProps<{
   name: string
   answered: boolean
+  isCurrentUser?: boolean
 }>()
 </script>
 
@@ -17,13 +18,12 @@ defineProps<{
       <AppIcon :name="answered ? 'check-circle' : 'clock'" :size="18" />
     </span>
 
-    <span class="response-status__name">
-      {{ name }}
+    <span class="response-status__identity">
+      <span class="response-status__name">{{ name }}</span>
+      <span v-if="isCurrentUser" class="response-status__current-user">（あなた）</span>
     </span>
 
-    <span class="response-status__label">
-      {{ answered ? '回答済み' : '未回答' }}
-    </span>
+    <span v-if="!answered" class="response-status__label">未回答</span>
   </div>
 </template>
 
@@ -57,13 +57,37 @@ defineProps<{
     }
   }
 
+  &__identity {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    flex-wrap: wrap;
+    column-gap: 2px;
+  }
+
   &__name {
+    min-width: 0;
+
     font-size: $font-size-body;
+    overflow-wrap: anywhere;
+  }
+
+  &__current-user {
+    flex-shrink: 0;
+
+    color: $color-neutral-600;
+    font-size: $font-size-caption;
+    font-weight: $font-weight-regular;
   }
 
   &__label {
-    color: $color-neutral-600;
+    padding: 3px 8px;
+
+    border-radius: $radius-chip;
+    background: rgba($color-warning, 0.18);
+    color: $color-text;
     font-size: $font-size-caption;
+    font-weight: $font-weight-semibold;
   }
 }
 </style>
