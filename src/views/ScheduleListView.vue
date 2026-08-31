@@ -185,9 +185,7 @@ const goCreateSchedule = () => {
   }
 
   &__track {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, 88%);
+    display: flex;
     gap: $spacing-2;
 
     width: 100%;
@@ -202,14 +200,17 @@ const goCreateSchedule = () => {
     }
 
     > * {
+      flex: 0 0 80%;
+      min-width: 0;
       scroll-snap-align: start;
     }
   }
 }
 
 @media (min-width: 720px) {
-  .schedule-list-view__track {
-    grid-auto-columns: minmax(260px, 32%);
+  .schedule-list-view__track > * {
+    flex-basis: 32%;
+    min-width: 260px;
   }
 }
 </style>

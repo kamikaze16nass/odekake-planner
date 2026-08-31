@@ -40,13 +40,18 @@ withDefaults(
         <span>{{ period }}</span>
       </p>
 
-      <p class="schedule-card__meta-row" :aria-label="responseStatus">
-        <AppIcon name="check-circle" :size="20" />
-        <span>{{ responseStatus }}</span>
+      <p
+        class="schedule-card__meta-row schedule-card__meta-row--progress"
+        :aria-label="responseStatus"
+      >
+        <span class="schedule-card__progress-content">
+          <AppIcon name="check-circle" :size="20" />
+          <span>{{ responseStatus }}</span>
+        </span>
+
+        <AppIcon class="schedule-card__chevron" name="chevron-right" :size="22" />
       </p>
     </div>
-
-    <AppIcon class="schedule-card__chevron" name="chevron-right" :size="22" />
   </RouterLink>
 </template>
 
@@ -58,11 +63,11 @@ withDefaults(
 
   display: flex;
   flex-direction: column;
-  gap: $spacing-2;
+  gap: 12px;
 
   width: 100%;
   min-width: 0;
-  padding: $spacing-2;
+  padding: 12px $spacing-2;
 
   border: 1px solid $color-neutral-300;
   border-radius: $radius-card;
@@ -88,9 +93,9 @@ withDefaults(
 
   &__header {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: $spacing-2;
+    flex-direction: column;
+    align-items: stretch;
+    gap: $spacing-1;
   }
 
   &__title {
@@ -102,9 +107,16 @@ withDefaults(
     font-weight: $font-weight-bold;
     line-height: 1.4;
     overflow-wrap: anywhere;
+
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
 
   &__badge {
+    align-self: flex-start;
     flex-shrink: 0;
 
     padding: 4px 8px;
@@ -147,9 +159,19 @@ withDefaults(
     color: $color-primary;
   }
 
+  &__meta-row--progress {
+    justify-content: space-between;
+  }
+
+  &__progress-content {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+  }
+
   &__chevron {
-    align-self: flex-end;
-    margin-top: auto;
+    flex-shrink: 0;
     color: $color-primary;
   }
 }
